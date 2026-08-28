@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Row, Col, message, Upload } from 'antd';
+import { Button, Row, Col, message, Upload, ColorPicker } from 'antd';
 import {
   PictureOutlined,
   VideoCameraOutlined,
@@ -9,6 +9,7 @@ import {
   SwapOutlined,
   DownloadOutlined,
   RedoOutlined,
+  BgColorsOutlined,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import ProgressPanel, { type Step } from '../components/ProgressPanel';
@@ -38,6 +39,9 @@ const Scene4ReplaceLogo = () => {
 
   // 新 Logo 图片:组件内部状态,不进入源素材列表
   const [logoFile, setLogoFile] = useState<LogoFile | null>(null);
+
+  // 遮挡色块颜色(全局):未上传新 Logo 时,红框区域以该色块盖住原 Logo
+  const [blockColor, setBlockColor] = useState('#000000');
 
   // Step2 内部状态
   const [analyzing, setAnalyzing] = useState(false);
@@ -316,12 +320,17 @@ const Scene4ReplaceLogo = () => {
                   识别完成,请拖动红框调整 Logo 位置
                 </div>
                 <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-                  共 {logoBoxes.length} 个视频,支持播放预览;直接在缩略图上拖动红框即可调整新 Logo 位置与大小
+                  共 {logoBoxes.length} 个视频,支持播放预览;拖动红框调整遮挡区域,红框内以新 Logo 或色块盖住原 Logo
                 </div>
               </div>
 
-              {/* 顶部全局操作:替换新 Logo(影响所有视频) */}
-              <GlobalLogoBar logoFile={logoFile} onChange={setLogoFile} />
+              {/* 顶部全局操作:新 Logo + 遮挡色块(影响所有视频) */}
+              <GlobalLogoBar
+                logoFile={logoFile}
+                onChange={setLogoFile}
+                blockColor={blockColor}
+                onBlockColorChange={setBlockColor}
+              />
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
                     {logoBoxes.map(box => {
@@ -352,7 +361,7 @@ const Scene4ReplaceLogo = () => {
                               playsInline
                             />
                             {/* Logo 框(可拖动位置 + 拖角改变大小,框内实时预览新 Logo) */}
-                            <LogoBoxOverlay box={box} logoUrl={logoFile?.url} onChange={next => updateLogoBox(box.fileId, next)} />
+                            <LogoBoxOverlay box={box} logoUrl={logoFile?.url} blockColor={blockColor} onChange={next => updateLogoBox(box.fileId, next)} />
                           </div>
                           <div
                             style={{
@@ -514,11 +523,16 @@ const Scene4ReplaceLogo = () => {
 
 /**
  * 单个视频上的 Logo 框:可整体拖动改位置,右下角控制柄可改大小;
- * 框内实时展示新 Logo(等比缩放),方便对照调整
+ * 框内实时展示新 Logo(等比缩放);未上传新 Logo 时以全局色块盖住原 Logo
  */
 const LogoBoxOverlay = ({
-  box, logoUrl, onChange,
-}: { box: LogoBox; logoUrl?: string | null; onChange: (next: Partial<LogoBox>) => void }) => {
+  box, logoUrl, blockColor, onChange,
+}: {
+  box: LogoBox;
+  logoUrl?: string | null;
+  blockColor?: string;
+  onChange: (next: Partial<LogoBox>) => void;
+}) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   type Mode = 'move' | 'resize-br' | null;
   const modeRef = useRef<Mode>(null);
@@ -586,8 +600,8 @@ const LogoBoxOverlay = ({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >
-        {/* 框内展示新 Logo,等比缩放(objectFit: contain),不拦截拖拽事件 */}
-        {logoUrl && (
+        {/* 框内:上传了新 Logo 展示图片(等比缩放);否则用全局色块盖住原 Logo */}
+        {logoUrl ? (
           <img
             src={logoUrl}
             alt="新 Logo"
@@ -598,6 +612,14 @@ const LogoBoxOverlay = ({
               objectFit: 'contain',
               pointerEvents: 'none',
               userSelect: 'none',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: 'absolute', inset: 0,
+              background: blockColor ?? '#000000',
+              pointerEvents: 'none',
             }}
           />
         )}
@@ -632,66 +654,122 @@ const LogoBoxOverlay = ({
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /**
- * 全局新 Logo 替换栏:放在识别完成后的页面顶部,影响所有视频的红框预览
+ * 全局设置栏:放在识别完成后的页面顶部
+ * - 行 1:全局新 Logo(上传后红框内展示新 Logo)
+ * - 行 2:遮挡色块颜色(未上传新 Logo 时,红框内以色块盖住原 Logo)
  */
 const GlobalLogoBar = ({
-  logoFile, onChange,
-}: { logoFile: LogoFile | null; onChange: (f: LogoFile | null) => void }) => {
+  logoFile, onChange, blockColor, onBlockColorChange,
+}: {
+  logoFile: LogoFile | null;
+  onChange: (f: LogoFile | null) => void;
+  blockColor: string;
+  onBlockColorChange: (c: string) => void;
+}) => {
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '10px 14px',
+        display: 'flex', flexDirection: 'column', gap: 0,
         marginBottom: 16,
         background: '#fff',
         border: '1px solid #e5e7eb',
         borderRadius: 10,
+        overflow: 'hidden',
       }}
     >
-      <SwapOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
-      <strong style={{ fontSize: 13 }}>全局新 Logo</strong>
-      <span style={{ fontSize: 11, color: '#9ca3af' }}>替换后所有视频的红框预览同步更新</span>
+      {/* 行 1:全局新 Logo */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px',
+          borderBottom: '1px solid #f3f4f6',
+        }}
+      >
+        <SwapOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
+        <strong style={{ fontSize: 13 }}>全局新 Logo</strong>
+        <span style={{ fontSize: 11, color: '#9ca3af' }}>上传后红框内以新 Logo 替换,所有视频同步更新</span>
 
-      <div style={{ flex: 1 }} />
+        <div style={{ flex: 1 }} />
 
-      {logoFile ? (
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '4px 10px', background: '#fafafa',
-            border: '1px dashed #d1d5db', borderRadius: 8,
-          }}
-        >
-          <img
-            src={logoFile.url}
-            alt={logoFile.name}
-            style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-          />
-          <div style={{ fontSize: 12, color: '#374151', maxWidth: 160,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            title={logoFile.name}
+        {logoFile ? (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '4px 10px', background: '#fafafa',
+              border: '1px dashed #d1d5db', borderRadius: 8,
+            }}
           >
-            {logoFile.name}
+            <img
+              src={logoFile.url}
+              alt={logoFile.name}
+              style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
+            />
+            <div style={{ fontSize: 12, color: '#374151', maxWidth: 160,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              title={logoFile.name}
+            >
+              {logoFile.name}
+            </div>
+            <Button size="small" type="text" danger onClick={() => onChange(null)}>
+              移除
+            </Button>
           </div>
-          <Button size="small" type="text" danger onClick={() => onChange(null)}>
-            移除
-          </Button>
-        </div>
-      ) : (
-        <Upload.Dragger
-          beforeUpload={file => {
-            onChange({ name: file.name, url: URL.createObjectURL(file) });
-            message.success(`已上传 ${file.name}`);
-            return false;
+        ) : (
+          <Upload.Dragger
+            beforeUpload={file => {
+              onChange({ name: file.name, url: URL.createObjectURL(file) });
+              message.success(`已上传 ${file.name}`);
+              return false;
+            }}
+            showUploadList={false}
+            accept="image/*"
+            style={{ width: 220, padding: '6px 10px', borderRadius: 8 }}
+          >
+            <CloudUploadOutlined style={{ fontSize: 18, color: '#f59e0b', marginRight: 6 }} />
+            <span style={{ fontSize: 12.5 }}>点击上传新 Logo</span>
+          </Upload.Dragger>
+        )}
+      </div>
+
+      {/* 行 2:遮挡色块颜色(全局) */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px',
+          background: '#fafafa',
+        }}
+      >
+        <BgColorsOutlined style={{ color: '#6366f1', fontSize: 18 }} />
+        <strong style={{ fontSize: 13 }}>遮挡色块颜色</strong>
+        <span style={{ fontSize: 11, color: '#9ca3af' }}>
+          未上传新 Logo 时,红框内以该色块盖住原 Logo(全局生效)
+        </span>
+
+        <div style={{ flex: 1 }} />
+
+        <ColorPicker
+          value={blockColor}
+          onChange={(_, hex) => onBlockColorChange(hex)}
+          size="small"
+          presets={[
+            {
+              label: '常用色',
+              colors: [
+                '#000000', '#111827', '#1f2937', '#374151',
+                '#6b7280', '#9ca3af', '#d1d5db', '#ffffff',
+              ],
+            },
+          ]}
+        />
+        <span
+          style={{
+            fontSize: 11.5, color: '#6b7280',
+            fontFamily: 'monospace', minWidth: 64,
           }}
-          showUploadList={false}
-          accept="image/*"
-          style={{ width: 220, padding: '6px 10px', borderRadius: 8 }}
         >
-          <CloudUploadOutlined style={{ fontSize: 18, color: '#f59e0b', marginRight: 6 }} />
-          <span style={{ fontSize: 12.5 }}>点击上传新 Logo</span>
-        </Upload.Dragger>
-      )}
+          {blockColor.toUpperCase()}
+        </span>
+      </div>
     </div>
   );
 };
