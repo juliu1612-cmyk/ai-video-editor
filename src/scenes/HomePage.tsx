@@ -186,7 +186,7 @@ const FeatureCard = ({
           position: 'relative', zIndex: 2,
         }}
       >
-        <span style={{ fontSize: 11, color: '#b0b5bd' }}>MP4 / MOV / MKV</span>
+        <span style={{ fontSize: 11, color: '#b0b5bd' }}>MP4 / MOV</span>
         <span
           style={{
             fontSize: 13, fontWeight: 600,
