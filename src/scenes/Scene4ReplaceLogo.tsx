@@ -1,0 +1,699 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button, Row, Col, message, Upload } from 'antd';
+import {
+  PictureOutlined,
+  VideoCameraOutlined,
+  ArrowRightOutlined,
+  CheckCircleFilled,
+  CloudUploadOutlined,
+  SwapOutlined,
+  DownloadOutlined,
+  RedoOutlined,
+} from '@ant-design/icons';
+import VideoUploader from '../components/VideoUploader';
+import ProgressPanel, { type Step } from '../components/ProgressPanel';
+import TopSteps from '../components/TopSteps';
+import { useApp, sceneMeta } from '../context/AppContext';
+import { downloadVideo, downloadVideosBatch } from '../utils/download';
+
+type StepNum = 1 | 2 | 3;
+
+interface LogoFile {
+  name: string;
+  url: string;
+}
+
+interface LogoBox {
+  fileId: string;
+  fileName: string;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
+
+const Scene4ReplaceLogo = () => {
+  const { uploadedFiles, addGeneratedVideo, setNav } = useApp();
+  const [step, setStep] = useState<StepNum>(1);
+
+  // 新 Logo 图片:组件内部状态,不进入源素材列表
+  const [logoFile, setLogoFile] = useState<LogoFile | null>(null);
+
+  // Step2 内部状态
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState(0);
+  const [analyzed, setAnalyzed] = useState(false);
+
+  // 每个视频的 Logo 区域(批量场景:不同视频 logo 位置不同)
+  const [logoBoxes, setLogoBoxes] = useState<LogoBox[]>([]);
+
+  const updateLogoBox = (fileId: string, patch: Partial<LogoBox>) => {
+    setLogoBoxes(prev => prev.map(b => b.fileId === fileId ? { ...b, ...patch } : b));
+  };
+
+  // Step3 内部状态
+  const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const [done, setDone] = useState(false);
+
+  // 生成完成:把每个成片入库(context 内置 5 秒同标题+URL 去重,防 StrictMode 双挂载)
+  useEffect(() => {
+    if (!done) return;
+    const meta = sceneMeta['replace-logo'];
+    uploadedFiles.forEach(f => {
+      addGeneratedVideo({
+        title: `${f.name}(去Logo)`,
+        scene: 'replace-logo',
+        sceneLabel: meta.label,
+        url: f.url,
+        cover: meta.cover,
+        maker: '我',
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
+
+  const hasOrigin = uploadedFiles.length > 0;
+  const hasLogo = logoFile !== null;
+
+  const goStep2 = () => {
+    if (!hasOrigin) return message.warning('请先上传原素材视频');
+    setStep(2);
+    setAnalyzed(false);
+    setAnalyzeProgress(0);
+    setAnalyzing(true);
+    let p = 0;
+    const t = setInterval(() => {
+      p += 7;
+      if (p >= 100) {
+        p = 100;
+        clearInterval(t);
+        // 分析完成后,为每个视频初始化一组默认 Logo 位置(供用户调整)
+        setLogoBoxes(prev => {
+          if (prev.length > 0) return prev;
+          return uploadedFiles.map((f, i) => {
+            const seed = (i + 1) * 7;
+            return {
+              fileId: f.id,
+              fileName: f.name,
+              xPct: 70 + (seed % 20),
+              yPct: 8 + (seed % 12),
+              wPct: 14,
+              hPct: 10,
+            };
+          });
+        });
+        setAnalyzing(false);
+        setAnalyzed(true);
+        message.success('识别完成');
+      }
+      setAnalyzeProgress(p);
+    }, 90);
+  };
+
+  const goStep3 = () => {
+    setStep(3);
+    setDone(false);
+    setGenProgress(0);
+    setGenerating(true);
+    let p = 0;
+    const t = setInterval(() => {
+      p += 5;
+      if (p >= 100) {
+        p = 100;
+        clearInterval(t);
+        setGenerating(false);
+        setDone(true);
+        message.success('生成完成');
+      }
+      setGenProgress(p);
+    }, 120);
+  };
+
+  const restart = () => {
+    setStep(1);
+    setDone(false);
+    setAnalyzed(false);
+    setGenProgress(0);
+    setAnalyzeProgress(0);
+  };
+
+  const progressSteps: Step[] = [
+    { key: '1', label: '上传素材', status: step > 1 ? 'finish' : 'process' },
+    { key: '2', label: '识别 Logo', status: step > 1 ? 'finish' : step === 2 ? 'process' : 'wait' },
+  ];
+
+  const footer = (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: 24,
+        paddingTop: 16,
+        borderTop: '1px solid #f3f4f6',
+      }}
+    >
+      {step === 1 && (
+        <Button type="primary" className="gradient-btn" size="large" onClick={goStep2}>
+          开始识别 <ArrowRightOutlined />
+        </Button>
+      )}
+      {step === 2 && analyzed && (
+        <Button type="primary" className="gradient-btn" size="large" onClick={goStep3}>
+          生成视频 <ArrowRightOutlined />
+        </Button>
+      )}
+      {step === 2 && !analyzed && <span />}
+      {step === 3 && <span />}
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <TopSteps current={step} steps={['上传素材', '识别 Logo', '生成视频']} />
+
+      {/* ============ 第一步:上传素材 ============ */}
+      {step === 1 && (
+        <div className="section-card" style={{ padding: 28 }}>
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>
+              上传原素材,完成后开始识别
+            </div>
+            <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
+              原素材视频必填;新 Logo 图片选填,可在识别后再上传替换
+            </div>
+          </div>
+
+          <Row gutter={[16, 16]}>
+            {/* 原素材 */}
+            <Col xs={24} md={12}>
+              <div
+                style={{
+                  border: `2px solid ${hasOrigin ? '#10b981' : '#e5e7eb'}`,
+                  borderRadius: 14,
+                  padding: 16,
+                  height: '100%',
+                  position: 'relative',
+                }}
+              >
+                {hasOrigin && (
+                  <CheckCircleFilled
+                    style={{ position: 'absolute', top: 10, right: 10, color: '#10b981', fontSize: 16 }}
+                  />
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <VideoCameraOutlined style={{ color: '#6366f1', fontSize: 18 }} />
+                  <strong>① 原素材视频</strong>
+                  <span style={{ fontSize: 11, color: '#ef4444' }}>必填</span>
+                </div>
+                <VideoUploader
+                  multiple
+                  title="上传视频(可多选)"
+                  desc="支持批量上传多个视频,mp4/mov/mkv,单个≤2G"
+                  showCloudBtn={false}
+                />
+              </div>
+            </Col>
+
+            {/* 新 Logo */}
+            <Col xs={24} md={12}>
+              <div
+                style={{
+                  border: `2px solid ${hasLogo ? '#10b981' : '#e5e7eb'}`,
+                  borderRadius: 14,
+                  padding: 16,
+                  height: '100%',
+                  position: 'relative',
+                }}
+              >
+                {hasLogo && (
+                  <CheckCircleFilled
+                    style={{ position: 'absolute', top: 10, right: 10, color: '#10b981', fontSize: 16 }}
+                  />
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <PictureOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
+                  <strong>② 新 Logo 图片</strong>
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>选填</span>
+                </div>
+                {logoFile ? (
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: 12, background: '#fafafa',
+                      border: '1px dashed #d1d5db', borderRadius: 12,
+                    }}
+                  >
+                    <img
+                      src={logoFile.url}
+                      alt={logoFile.name}
+                      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, background: '#fff' }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13, fontWeight: 500,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {logoFile.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#10b981', marginTop: 2 }}>已就绪</div>
+                    </div>
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      onClick={() => setLogoFile(null)}
+                    >
+                      移除
+                    </Button>
+                  </div>
+                ) : (
+                  <Upload.Dragger
+                    beforeUpload={file => {
+                      setLogoFile({ name: file.name, url: URL.createObjectURL(file) });
+                      message.success(`已上传 ${file.name}`);
+                      return false;
+                    }}
+                    showUploadList={false}
+                    accept="image/*"
+                    style={{ borderRadius: 12, background: '#fafafa' }}
+                  >
+                    <CloudUploadOutlined style={{ fontSize: 28, color: '#f59e0b' }} />
+                    <div style={{ marginTop: 8, fontSize: 13 }}>点击/拖拽上传</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                      PNG(推荐透明底)/JPG · 选填,可跳过
+                    </div>
+                  </Upload.Dragger>
+                )}
+              </div>
+            </Col>
+          </Row>
+
+          {footer}
+        </div>
+      )}
+
+      {/* ============ 第二步:识别 Logo ============ */}
+      {step === 2 && (
+        <div className="section-card" style={{ padding: 28 }}>
+          {analyzing && (
+            <div style={{ padding: 40 }}>
+              <ProgressPanel
+                steps={progressSteps}
+                progress={analyzeProgress}
+                estimatedSeconds={60}
+              />
+            </div>
+          )}
+
+          {analyzed && (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  <CheckCircleFilled style={{ color: '#10b981', marginRight: 8 }} />
+                  识别完成,请拖动红框调整 Logo 位置
+                </div>
+                <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
+                  共 {logoBoxes.length} 个视频,支持播放预览;直接在缩略图上拖动红框即可调整新 Logo 位置与大小
+                </div>
+              </div>
+
+              {/* 顶部全局操作:替换新 Logo(影响所有视频) */}
+              <GlobalLogoBar logoFile={logoFile} onChange={setLogoFile} />
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                    {logoBoxes.map(box => {
+                      const file = uploadedFiles.find(f => f.id === box.fileId);
+                      return (
+                        <div
+                          key={box.fileId}
+                          style={{
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 10,
+                            overflow: 'hidden',
+                            background: '#f9fafb',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              paddingBottom: ' 177.7%',
+                              background: '#000',
+                            }}
+                          >
+                            <video
+                              src={file?.url}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                              controls
+                              preload="metadata"
+                              playsInline
+                            />
+                            {/* Logo 框(可拖动位置 + 拖角改变大小,框内实时预览新 Logo) */}
+                            <LogoBoxOverlay box={box} logoUrl={logoFile?.url} onChange={next => updateLogoBox(box.fileId, next)} />
+                          </div>
+                          <div
+                            style={{
+                              padding: '8px 12px',
+                              fontSize: 12,
+                              color: '#374151',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span
+                              style={{
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                flex: 1,
+                              }}
+                              title={box.fileName}
+                            >
+                              {box.fileName}
+                            </span>
+                            <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
+                              {Math.round(box.xPct)},{Math.round(box.yPct)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+            </div>
+          )}
+
+          {footer}
+        </div>
+      )}
+
+      {/* ============ 第三步:生成视频 ============ */}
+      {step === 3 && (
+        <div className="section-card" style={{ padding: 28 }}>
+          {generating && (
+            <div style={{ padding: 40 }}>
+              <ProgressPanel steps={progressSteps} progress={genProgress} estimatedSeconds={480} />
+            </div>
+          )}
+
+          {done && (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: 18 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  <CheckCircleFilled style={{ color: '#10b981', marginRight: 8 }} />
+                  Logo 已替换,生成 {uploadedFiles.length} 个成片
+                </div>
+                <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
+                  每个源视频对应一个成片,可播放预览、单独下载,或批量下载全部
+                </div>
+              </div>
+
+              {/* 工具栏:批量下载 / 重新制作 / 查看成片列表 */}
+              <div
+                style={{
+                  display: 'flex', justifyContent: 'center', gap: 10,
+                  flexWrap: 'wrap', marginBottom: 20,
+                }}
+              >
+                <Button
+                  type="primary"
+                  className="gradient-btn"
+                  icon={<DownloadOutlined />}
+                  onClick={() =>
+                    downloadVideosBatch(
+                      uploadedFiles.map(f => ({ url: f.url, title: `${f.name}(去Logo)` }))
+                    )
+                  }
+                >
+                  批量下载全部({uploadedFiles.length})
+                </Button>
+                <Button icon={<RedoOutlined />} onClick={restart}>重新制作</Button>
+                <Button type="link" icon={<VideoCameraOutlined />} onClick={() => setNav('videos')}>
+                  查看成片列表
+                </Button>
+              </div>
+
+              {/* 成片网格:每个源视频一个成片卡 */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                  gap: 16,
+                }}
+              >
+                {uploadedFiles.map(f => {
+                  const vTitle = `${f.name}(去Logo)`;
+                  return (
+                    <div
+                      key={f.id}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 10,
+                        overflow: 'hidden',
+                        background: '#f9fafb',
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'relative', width: '100%',
+                          paddingBottom: '56.25%', background: '#000',
+                        }}
+                      >
+                        <video
+                          src={f.url}
+                          controls
+                          preload="metadata"
+                          playsInline
+                          style={{
+                            position: 'absolute', inset: 0,
+                            width: '100%', height: '100%', objectFit: 'contain',
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            flex: 1, minWidth: 0,
+                            fontSize: 12.5, color: '#374151',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}
+                          title={vTitle}
+                        >
+                          {vTitle}
+                        </span>
+                        <Button
+                          size="small"
+                          type="primary"
+                          icon={<DownloadOutlined />}
+                          onClick={() => downloadVideo(f.url, vTitle)}
+                        >
+                          下载
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {footer}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * 单个视频上的 Logo 框:可整体拖动改位置,右下角控制柄可改大小;
+ * 框内实时展示新 Logo(等比缩放),方便对照调整
+ */
+const LogoBoxOverlay = ({
+  box, logoUrl, onChange,
+}: { box: LogoBox; logoUrl?: string | null; onChange: (next: Partial<LogoBox>) => void }) => {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  type Mode = 'move' | 'resize-br' | null;
+  const modeRef = useRef<Mode>(null);
+  const startRef = useRef<{ x: number; y: number; xPct: number; yPct: number; wPct: number; hPct: number }>(
+    { x: 0, y: 0, xPct: 0, yPct: 0, wPct: 0, hPct: 0 }
+  );
+
+  const onPointerDown = (mode: Mode) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    modeRef.current = mode;
+    startRef.current = {
+      x: e.clientX, y: e.clientY,
+      xPct: box.xPct, yPct: box.yPct, wPct: box.wPct, hPct: box.hPct,
+    };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!modeRef.current) return;
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dxPct = ((e.clientX - startRef.current.x) / rect.width) * 100;
+    const dyPct = ((e.clientY - startRef.current.y) / rect.height) * 100;
+
+    if (modeRef.current === 'move') {
+      onChange({
+        xPct: clamp(startRef.current.xPct + dxPct, 0, 100 - startRef.current.wPct),
+        yPct: clamp(startRef.current.yPct + dyPct, 0, 100 - startRef.current.hPct),
+      });
+    } else if (modeRef.current === 'resize-br') {
+      onChange({
+        wPct: clamp(startRef.current.wPct + dxPct, 4, 100 - startRef.current.xPct),
+        hPct: clamp(startRef.current.hPct + dyPct, 4, 100 - startRef.current.yPct),
+      });
+    }
+  };
+
+  const onPointerUp = () => { modeRef.current = null; };
+
+  return (
+    <div
+      ref={wrapRef}
+      // pointerEvents: none 让空白区域点击穿透到视频控制条;
+      // 红框自身恢复 auto,拖拽/缩放不受影响
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div
+        onPointerDown={onPointerDown('move')}
+        style={{
+          position: 'absolute',
+          pointerEvents: 'auto',
+          left: `${box.xPct}%`,
+          top: `${box.yPct}%`,
+          width: `${box.wPct}%`,
+          height: `${box.hPct}%`,
+          border: '2px solid #ef4444',
+          background: 'rgba(239,68,68,0.10)',
+          cursor: 'move',
+          borderRadius: 2,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {/* 框内展示新 Logo,等比缩放(objectFit: contain),不拦截拖拽事件 */}
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt="新 Logo"
+            draggable={false}
+            style={{
+              maxWidth: '100%', maxHeight: '100%',
+              width: '100%', height: '100%',
+              objectFit: 'contain',
+              pointerEvents: 'none',
+              userSelect: 'none',
+            }}
+          />
+        )}
+        {/* 尺寸手柄 */}
+        <div
+          onPointerDown={onPointerDown('resize-br')}
+          style={{
+            position: 'absolute',
+            right: -5, bottom: -5,
+            width: 10, height: 10,
+            background: '#fff',
+            border: '2px solid #ef4444',
+            borderRadius: 2,
+            cursor: 'nwse-resize',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute', top: -20, left: 0,
+            background: '#ef4444', color: '#fff',
+            fontSize: 10, padding: '1px 6px', borderRadius: 3,
+            whiteSpace: 'nowrap', pointerEvents: 'none',
+          }}
+        >
+          Logo
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/**
+ * 全局新 Logo 替换栏:放在识别完成后的页面顶部,影响所有视频的红框预览
+ */
+const GlobalLogoBar = ({
+  logoFile, onChange,
+}: { logoFile: LogoFile | null; onChange: (f: LogoFile | null) => void }) => {
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 14px',
+        marginBottom: 16,
+        background: '#fff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 10,
+      }}
+    >
+      <SwapOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
+      <strong style={{ fontSize: 13 }}>全局新 Logo</strong>
+      <span style={{ fontSize: 11, color: '#9ca3af' }}>替换后所有视频的红框预览同步更新</span>
+
+      <div style={{ flex: 1 }} />
+
+      {logoFile ? (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '4px 10px', background: '#fafafa',
+            border: '1px dashed #d1d5db', borderRadius: 8,
+          }}
+        >
+          <img
+            src={logoFile.url}
+            alt={logoFile.name}
+            style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
+          />
+          <div style={{ fontSize: 12, color: '#374151', maxWidth: 160,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={logoFile.name}
+          >
+            {logoFile.name}
+          </div>
+          <Button size="small" type="text" danger onClick={() => onChange(null)}>
+            移除
+          </Button>
+        </div>
+      ) : (
+        <Upload.Dragger
+          beforeUpload={file => {
+            onChange({ name: file.name, url: URL.createObjectURL(file) });
+            message.success(`已上传 ${file.name}`);
+            return false;
+          }}
+          showUploadList={false}
+          accept="image/*"
+          style={{ width: 220, padding: '6px 10px', borderRadius: 8 }}
+        >
+          <CloudUploadOutlined style={{ fontSize: 18, color: '#f59e0b', marginRight: 6 }} />
+          <span style={{ fontSize: 12.5 }}>点击上传新 Logo</span>
+        </Upload.Dragger>
+      )}
+    </div>
+  );
+};
+
+export default Scene4ReplaceLogo;
