@@ -320,7 +320,7 @@ const Scene4ReplaceLogo = () => {
                   识别完成,请拖动红框调整 Logo 位置
                 </div>
                 <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-                  共 {logoBoxes.length} 个视频,支持播放预览;拖动红框调整遮挡区域,红框内以新 Logo 或色块盖住原 Logo
+                  共 {logoBoxes.length} 个视频,支持播放预览;拖动红框调整遮挡区域,红框内以色块盖住原 Logo,新 Logo 叠加在色块上方
                 </div>
               </div>
 
@@ -523,7 +523,7 @@ const Scene4ReplaceLogo = () => {
 
 /**
  * 单个视频上的 Logo 框:可整体拖动改位置,右下角控制柄可改大小;
- * 框内实时展示新 Logo(等比缩放);未上传新 Logo 时以全局色块盖住原 Logo
+ * 框内始终以全局色块盖住原 Logo,新 Logo(若上传)叠加在色块上方
  */
 const LogoBoxOverlay = ({
   box, logoUrl, blockColor, onChange,
@@ -600,26 +600,26 @@ const LogoBoxOverlay = ({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >
-        {/* 框内:上传了新 Logo 展示图片(等比缩放);否则用全局色块盖住原 Logo */}
-        {logoUrl ? (
+        {/* 色块:始终渲染,盖住原 Logo;新 Logo(若有)叠加在色块上方 */}
+        <div
+          style={{
+            position: 'absolute', inset: 0,
+            background: blockColor ?? '#000000',
+            pointerEvents: 'none',
+          }}
+        />
+        {logoUrl && (
           <img
             src={logoUrl}
             alt="新 Logo"
             draggable={false}
             style={{
+              position: 'relative', zIndex: 1,
               maxWidth: '100%', maxHeight: '100%',
               width: '100%', height: '100%',
               objectFit: 'contain',
               pointerEvents: 'none',
               userSelect: 'none',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              position: 'absolute', inset: 0,
-              background: blockColor ?? '#000000',
-              pointerEvents: 'none',
             }}
           />
         )}
@@ -742,7 +742,7 @@ const GlobalLogoBar = ({
         <BgColorsOutlined style={{ color: '#6366f1', fontSize: 18 }} />
         <strong style={{ fontSize: 13 }}>遮挡色块颜色</strong>
         <span style={{ fontSize: 11, color: '#9ca3af' }}>
-          未上传新 Logo 时,红框内以该色块盖住原 Logo(全局生效)
+          色块始终盖住原 Logo,新 Logo 将叠加在色块上方(全局生效)
         </span>
 
         <div style={{ flex: 1 }} />
