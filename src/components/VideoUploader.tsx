@@ -16,7 +16,7 @@ interface VideoUploaderProps {
 
 const VideoUploader = ({
   multiple = true,
-  accept = '.mp4,.mov,.mkv,.webm,.m4v,.ogv,.avi,.flv,.ts,.mts',
+  accept = '.mp4,.mov',
   maxSize = 2000,
   title = '点击/拖拽上传',
   desc = '文件总时长不得超过30分钟,单个最大2G',
@@ -38,8 +38,8 @@ const VideoUploader = ({
         return;
       }
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'mp4';
-      if (!accept.includes(ext)) {
-        message.warning(`不支持的格式: .${ext}`);
+      if (ext !== 'mp4' && ext !== 'mov') {
+        message.warning(`仅支持 MP4、MOV 格式,已跳过: ${file.name}`);
         return;
       }
       valid.push({
@@ -105,7 +105,7 @@ const VideoUploader = ({
         <div style={{ fontSize: 16, fontWeight: 600, marginTop: 12 }}>{title}</div>
         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>{desc}</div>
         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
-          支持: mp4/mpeg/webm/mov/mkv/wmv/m4v/ogv/avi/flv/ts/mts
+          仅支持: mp4 / mov
         </div>
         {showCloudBtn && (
           <Button
