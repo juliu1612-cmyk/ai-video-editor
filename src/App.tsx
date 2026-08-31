@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Layout, Typography } from 'antd';
 import Sidebar from './components/Sidebar';
 import HomePage from './scenes/HomePage';
@@ -27,15 +26,7 @@ const sceneMap: Record<string, React.FC> = {
 function App() {
   const { nav, setNav, activeScene, setActiveScene } = useApp();
 
-  // 支持 URL hash 直达场景,如 /#scene4
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    if (sceneMap[hash]) {
-      setActiveScene(hash);
-      setNav('workbench');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 打开页面默认进入功能选择页(首页);hash 不再直达工作台
 
   const SceneComp = sceneMap[activeScene] ?? Scene1MixedCut;
 
