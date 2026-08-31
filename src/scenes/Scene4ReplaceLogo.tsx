@@ -10,6 +10,8 @@ import {
   DownloadOutlined,
   RedoOutlined,
   BgColorsOutlined,
+  PlusOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import ProgressPanel, { type Step } from '../components/ProgressPanel';
@@ -25,6 +27,7 @@ interface LogoFile {
 }
 
 interface LogoBox {
+  id: string; // 框唯一标识:一个视频可有多个红框(手动添加/删除)
   fileId: string;
   fileName: string;
   xPct: number;
@@ -48,11 +51,39 @@ const Scene4ReplaceLogo = () => {
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [analyzed, setAnalyzed] = useState(false);
 
-  // 每个视频的 Logo 区域(批量场景:不同视频 logo 位置不同)
+  // 每个视频的 Logo 区域(一个视频可有多个框,支持手动添加/删除)
   const [logoBoxes, setLogoBoxes] = useState<LogoBox[]>([]);
 
-  const updateLogoBox = (fileId: string, patch: Partial<LogoBox>) => {
-    setLogoBoxes(prev => prev.map(b => b.fileId === fileId ? { ...b, ...patch } : b));
+  const updateLogoBox = (id: string, patch: Partial<LogoBox>) => {
+    setLogoBoxes(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+  };
+
+  // 手动添加红框:默认大小 14x10,按该视频已有框数错开位置避免完全重叠
+  const addLogoBox = (fileId: string) => {
+    const file = uploadedFiles.find(f => f.id === fileId);
+    if (!file) return;
+    setLogoBoxes(prev => {
+      const count = prev.filter(b => b.fileId === fileId).length;
+      const offset = (count % 4) * 7;
+      return [
+        ...prev,
+        {
+          id: `${fileId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          fileId,
+          fileName: file.name,
+          xPct: Math.min(38 + offset, 100 - 14),
+          yPct: Math.min(40 + offset, 100 - 10),
+          wPct: 14,
+          hPct: 10,
+        },
+      ];
+    });
+    message.success('已添加红框');
+  };
+
+  // 删除指定红框
+  const removeLogoBox = (id: string) => {
+    setLogoBoxes(prev => prev.filter(b => b.id !== id));
   };
 
   // Step3 内部状态
@@ -92,12 +123,13 @@ const Scene4ReplaceLogo = () => {
       if (p >= 100) {
         p = 100;
         clearInterval(t);
-        // 分析完成后,为每个视频初始化一组默认 Logo 位置(供用户调整)
+        // 分析完成后,为每个视频初始化一组默认 Logo 位置(供用户调整/增删)
         setLogoBoxes(prev => {
           if (prev.length > 0) return prev;
           return uploadedFiles.map((f, i) => {
             const seed = (i + 1) * 7;
             return {
+              id: `${f.id}-auto`,
               fileId: f.id,
               fileName: f.name,
               xPct: 70 + (seed % 20),
@@ -116,6 +148,7 @@ const Scene4ReplaceLogo = () => {
   };
 
   const goStep3 = () => {
+    if (logoBoxes.length === 0) return message.warning('请至少保留一个 Logo 识别框,可点击视频卡片下方「添加红框」');
     setStep(3);
     setDone(false);
     setGenProgress(0);
@@ -317,10 +350,10 @@ const Scene4ReplaceLogo = () => {
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>
                   <CheckCircleFilled style={{ color: '#10b981', marginRight: 8 }} />
-                  识别完成,请拖动红框调整 Logo 位置
+                  识别完成,可调整、添加或删除红框
                 </div>
                 <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-                  共 {logoBoxes.length} 个视频,支持播放预览;拖动红框调整遮挡区域,红框内以色块盖住原 Logo,新 Logo 叠加在色块上方
+                  共 {uploadedFiles.length} 个视频,支持播放预览;拖动红框调整遮挡区域,点击「添加红框」新增,点击红框右上角 × 删除;红框内以色块盖住原 Logo,新 Logo 叠加在色块上方
                 </div>
               </div>
 
@@ -333,11 +366,12 @@ const Scene4ReplaceLogo = () => {
               />
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-                    {logoBoxes.map(box => {
-                      const file = uploadedFiles.find(f => f.id === box.fileId);
+                    {uploadedFiles.map(file => {
+                      // 该视频当前的所有红框(识别默认生成,可手动增删)
+                      const boxes = logoBoxes.filter(b => b.fileId === file.id);
                       return (
                         <div
-                          key={box.fileId}
+                          key={file.id}
                           style={{
                             border: '1px solid #e5e7eb',
                             borderRadius: 10,
@@ -354,14 +388,43 @@ const Scene4ReplaceLogo = () => {
                             }}
                           >
                             <video
-                              src={file?.url}
+                              src={file.url}
                               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                               controls
                               preload="metadata"
                               playsInline
                             />
-                            {/* Logo 框(可拖动位置 + 拖角改变大小,框内实时预览新 Logo) */}
-                            <LogoBoxOverlay box={box} logoUrl={logoFile?.url} blockColor={blockColor} onChange={next => updateLogoBox(box.fileId, next)} />
+                            {/* 每视频可挂多个 Logo 框:拖动改位置、拖角改大小,右上角删除 */}
+                            {boxes.map((box, idx) => (
+                              <LogoBoxOverlay
+                                key={box.id}
+                                box={box}
+                                index={idx}
+                                logoUrl={logoFile?.url}
+                                blockColor={blockColor}
+                                onChange={next => updateLogoBox(box.id, next)}
+                                onRemove={() => removeLogoBox(box.id)}
+                              />
+                            ))}
+                            {/* 该视频红框被全部删除时的提示 */}
+                            {boxes.length === 0 && (
+                              <div
+                                style={{
+                                  position: 'absolute', inset: 0,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  pointerEvents: 'none',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color: '#fff', background: 'rgba(0,0,0,0.55)',
+                                    padding: '4px 12px', borderRadius: 6, fontSize: 11,
+                                  }}
+                                >
+                                  暂无识别框,点击下方「添加红框」
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <div
                             style={{
@@ -371,6 +434,7 @@ const Scene4ReplaceLogo = () => {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
+                              gap: 8,
                             }}
                           >
                             <span
@@ -380,13 +444,21 @@ const Scene4ReplaceLogo = () => {
                                 textOverflow: 'ellipsis',
                                 flex: 1,
                               }}
-                              title={box.fileName}
+                              title={file.name}
                             >
-                              {box.fileName}
+                              {file.name}
                             </span>
                             <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
-                              {Math.round(box.xPct)},{Math.round(box.yPct)}
+                              {boxes.length} 个红框
                             </span>
+                            <Button
+                              size="small"
+                              icon={<PlusOutlined />}
+                              onClick={() => addLogoBox(file.id)}
+                              style={{ flexShrink: 0 }}
+                            >
+                              添加红框
+                            </Button>
                           </div>
                         </div>
                       );
@@ -522,16 +594,18 @@ const Scene4ReplaceLogo = () => {
 };
 
 /**
- * 单个视频上的 Logo 框:可整体拖动改位置,右下角控制柄可改大小;
+ * 单个视频上的 Logo 框:可整体拖动改位置,右下角控制柄可改大小,右上角 × 删除;
  * 框内始终以全局色块盖住原 Logo,新 Logo(若上传)叠加在色块上方
  */
 const LogoBoxOverlay = ({
-  box, logoUrl, blockColor, onChange,
+  box, index, logoUrl, blockColor, onChange, onRemove,
 }: {
   box: LogoBox;
+  index: number;
   logoUrl?: string | null;
   blockColor?: string;
   onChange: (next: Partial<LogoBox>) => void;
+  onRemove: () => void;
 }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   type Mode = 'move' | 'resize-br' | null;
@@ -636,6 +710,26 @@ const LogoBoxOverlay = ({
             cursor: 'nwse-resize',
           }}
         />
+        {/* 删除按钮(右上角):stopPropagation 避免触发拖动 */}
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onRemove(); }}
+          title="删除该红框"
+          style={{
+            position: 'absolute',
+            top: -9, right: -9,
+            width: 18, height: 18,
+            background: '#ef4444',
+            color: '#fff',
+            borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+            zIndex: 2,
+          }}
+        >
+          <CloseOutlined style={{ fontSize: 10 }} />
+        </div>
         <div
           style={{
             position: 'absolute', top: -20, left: 0,
@@ -644,7 +738,7 @@ const LogoBoxOverlay = ({
             whiteSpace: 'nowrap', pointerEvents: 'none',
           }}
         >
-          Logo
+          Logo {index + 1}
         </div>
       </div>
     </div>
