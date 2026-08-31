@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Checkbox, Empty, Modal, Tag, message } from 'antd';
+import { Button, Checkbox, Empty, Modal, Select, Tag, message } from 'antd';
 import {
   PlayCircleFilled,
   DownloadOutlined,
@@ -7,8 +7,9 @@ import {
   VideoCameraOutlined,
   UserOutlined,
   ArrowLeftOutlined,
+  FilterOutlined,
 } from '@ant-design/icons';
-import { useApp, type GeneratedVideo } from '../context/AppContext';
+import { useApp, sceneMeta, type GeneratedVideo } from '../context/AppContext';
 import { downloadVideo, downloadVideosBatch } from '../utils/download';
 
 /** 绝对时间:YYYY-MM-DD HH:mm */
@@ -30,12 +31,73 @@ const formatRelative = (ts: number): string => {
   return `${d} 天前`;
 };
 
+/** 时间档位 → 起始时间戳("今天"取自然日零点) */
+const timeRangeStart = (mode: string): number => {
+  switch (mode) {
+    case 'today': return new Date().setHours(0, 0, 0, 0);
+    case '3d': return Date.now() - 3 * 86400000;
+    case '7d': return Date.now() - 7 * 86400000;
+    case '30d': return Date.now() - 30 * 86400000;
+    default: return -Infinity; // 全部时间
+  }
+};
+
+const timeOptions = [
+  { value: 'today', label: '今天' },
+  { value: '3d', label: '近3天' },
+  { value: '7d', label: '近7天' },
+  { value: '30d', label: '近30天' },
+];
+
 const VideoListPage = () => {
   const { generatedVideos, removeGeneratedVideo, setNav } = useApp();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewVideo, setPreviewVideo] = useState<GeneratedVideo | null>(null);
 
-  const allChecked = generatedVideos.length > 0 && selectedIds.length === generatedVideos.length;
+  // ===== 筛选状态 =====
+  const [sceneFilter, setSceneFilter] = useState<string[]>([]);   // 多选场景 key
+  const [timeFilter, setTimeFilter] = useState<string>('all');    // 时间档位
+  const [makerFilter, setMakerFilter] = useState<string | undefined>(undefined); // 制作人
+
+  // 筛选变更时清空勾选,避免选中不可见行
+  const changeFilter = (fn: () => void) => {
+    fn();
+    setSelectedIds([]);
+  };
+
+  const resetFilters = () => {
+    setSceneFilter([]);
+    setTimeFilter('all');
+    setMakerFilter(undefined);
+    setSelectedIds([]);
+  };
+
+  // 场景选项:全部 6 大场景(固定顺序)
+  const sceneOptions = useMemo(
+    () => Object.entries(sceneMeta).map(([key, m]) => ({ value: key, label: m.label })),
+    []
+  );
+
+  // 制作人选项:从现有成片动态去重
+  const makerOptions = useMemo(
+    () => [...new Set(generatedVideos.map(v => v.maker).filter(Boolean))],
+    [generatedVideos]
+  );
+
+  // 筛选结果
+  const filtered = useMemo(
+    () => generatedVideos.filter(v => {
+      if (sceneFilter.length > 0 && !sceneFilter.includes(v.scene)) return false;
+      if (v.createdAt < timeRangeStart(timeFilter)) return false;
+      if (makerFilter && v.maker !== makerFilter) return false;
+      return true;
+    }),
+    [generatedVideos, sceneFilter, timeFilter, makerFilter]
+  );
+
+  const hasFilter = sceneFilter.length > 0 || timeFilter !== 'all' || makerFilter !== undefined;
+
+  const allChecked = filtered.length > 0 && filtered.every(v => selectedIds.includes(v.id));
 
   const toggle = (id: string) => {
     setSelectedIds(prev =>
@@ -43,8 +105,14 @@ const VideoListPage = () => {
     );
   };
 
+  // 全选/取消仅作用于当前筛选后的可见行
   const toggleAll = () => {
-    setSelectedIds(allChecked ? [] : generatedVideos.map(v => v.id));
+    if (allChecked) {
+      const visibleIds = new Set(filtered.map(v => v.id));
+      setSelectedIds(prev => prev.filter(id => !visibleIds.has(id)));
+    } else {
+      setSelectedIds(prev => [...new Set([...prev, ...filtered.map(v => v.id)])]);
+    }
   };
 
   const selectedVideos = useMemo(
@@ -83,10 +151,10 @@ const VideoListPage = () => {
         <VideoCameraOutlined style={{ fontSize: 20, color: '#6366f1' }} />
         <div style={{ fontSize: 17, fontWeight: 700 }}>成片列表</div>
         <span style={{ fontSize: 12.5, color: '#9ca3af' }}>
-          共 {generatedVideos.length} 个 · 已选 {selectedIds.length} 个
+          共 {generatedVideos.length} 个{hasFilter ? ` · 筛选出 ${filtered.length} 个` : ''} · 已选 {selectedIds.length} 个
         </span>
         <div style={{ flex: 1 }} />
-        <Checkbox checked={allChecked} onChange={toggleAll} disabled={!generatedVideos.length}>
+        <Checkbox checked={allChecked} onChange={toggleAll} disabled={!filtered.length}>
           全选
         </Checkbox>
         <Button
@@ -100,7 +168,82 @@ const VideoListPage = () => {
         </Button>
       </div>
 
-      {/* 空状态 */}
+      {/* 筛选栏:场景 / 制作时间 / 制作人 */}
+      {generatedVideos.length > 0 && (
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 14,
+            border: '1px solid #e5e7eb',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 16,
+          }}
+        >
+          <FilterOutlined style={{ fontSize: 16, color: '#6366f1' }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', flexShrink: 0 }}>
+            筛选
+          </span>
+
+          {/* 场景(多选) */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>场景</span>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="全部场景"
+              value={sceneFilter}
+              onChange={vals => changeFilter(() => setSceneFilter(vals))}
+              options={sceneOptions}
+              maxTagCount="responsive"
+              style={{ minWidth: 170, maxWidth: 300 }}
+              size="middle"
+            />
+          </span>
+
+          {/* 制作时间(快捷档,可清除) */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>制作时间</span>
+            <Select
+              allowClear
+              placeholder="全部时间"
+              value={timeFilter === 'all' ? undefined : timeFilter}
+              onChange={v => changeFilter(() => setTimeFilter(v ?? 'all'))}
+              options={timeOptions}
+              style={{ width: 110 }}
+              size="middle"
+            />
+          </span>
+
+          {/* 制作人 */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>制作人</span>
+            <Select
+              allowClear
+              showSearch
+              placeholder="全部制作人"
+              value={makerFilter}
+              onChange={v => changeFilter(() => setMakerFilter(v))}
+              options={makerOptions.map(m => ({ value: m, label: m }))}
+              style={{ width: 130 }}
+              size="middle"
+            />
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          {hasFilter && (
+            <Button size="small" onClick={resetFilters}>
+              重置筛选
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* 空状态:无成片 */}
       {generatedVideos.length === 0 && (
         <div className="section-card" style={{ padding: 60, textAlign: 'center' }}>
           <Empty description="还没有成片,去创作一个吧">
@@ -111,8 +254,19 @@ const VideoListPage = () => {
         </div>
       )}
 
+      {/* 空状态:筛选无结果 */}
+      {generatedVideos.length > 0 && filtered.length === 0 && (
+        <div className="section-card" style={{ padding: 60, textAlign: 'center' }}>
+          <Empty description="没有符合筛选条件的成片">
+            <Button type="primary" className="gradient-btn" onClick={resetFilters}>
+              清除筛选
+            </Button>
+          </Empty>
+        </div>
+      )}
+
       {/* 列表 */}
-      {generatedVideos.length > 0 && (
+      {filtered.length > 0 && (
         <div
           style={{
             background: '#fff',
@@ -142,7 +296,7 @@ const VideoListPage = () => {
           </div>
 
           {/* 行 */}
-          {generatedVideos.map(v => {
+          {filtered.map(v => {
             const checked = selectedIds.includes(v.id);
             return (
               <div
