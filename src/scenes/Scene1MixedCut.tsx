@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Empty, Tag, Card, Row, Col, message, Select, Divider } from 'antd';
+import { Button, Empty, Tag, Card, Row, Col, message } from 'antd';
 import { ThunderboltOutlined, CaretRightOutlined } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import HighlightTimeline from '../components/HighlightTimeline';
@@ -18,53 +18,6 @@ const Phase = {
 } as const;
 type PhaseValue = (typeof Phase)[keyof typeof Phase];
 
-// ---------- 第一步:混剪配置 ----------
-interface MixConfig {
-  originLang: string;   // 原视频语言
-  narratorLang: string; // 解说语言
-  voice: string;        // 音色
-  duration: number;     // 生产视频时长(秒)
-}
-
-const originLangOptions = [
-  { label: '中文', value: '中文' },
-  { label: '粤语', value: '粤语' },
-  { label: '英文', value: '英文' },
-  { label: '日文', value: '日文' },
-  { label: '韩文', value: '韩文' },
-  { label: '泰语', value: '泰语' },
-];
-
-const narratorLangOptions = [
-  { label: '中文', value: '中文' },
-  { label: '英文', value: '英文' },
-  { label: '日文', value: '日文' },
-  { label: '韩文', value: '韩文' },
-  { label: '西班牙文', value: '西班牙文' },
-];
-
-const voiceOptions = [
-  { label: '知性女声', value: '知性女声' },
-  { label: '磁性男声', value: '磁性男声' },
-  { label: '活泼甜音', value: '活泼甜音' },
-  { label: '沉稳大叔音', value: '沉稳大叔音' },
-  { label: '旁白主播音', value: '旁白主播音' },
-];
-
-const durationOptions = [
-  { label: '1 分钟', value: 60 },
-  { label: '3 分钟', value: 180 },
-  { label: '5 分钟', value: 300 },
-  { label: '10 分钟', value: 600 },
-];
-
-const defaultConfig: MixConfig = {
-  originLang: '中文',
-  narratorLang: '中文',
-  voice: '知性女声',
-  duration: 180,
-};
-
 const Scene1MixedCut = () => {
   const { uploadedFiles } = useApp();
   const [phase, setPhase] = useState<PhaseValue>(1);
@@ -72,8 +25,6 @@ const Scene1MixedCut = () => {
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(scriptSets[0].id);
   const [selectedHighlights, setSelectedHighlights] = useState<string[]>([]);
   const [done, setDone] = useState(false);
-  // 第一步配置
-  const [config, setConfig] = useState<MixConfig>(defaultConfig);
 
   const script = useMemo(
     () => scriptSets.find(s => s.id === selectedScriptId) ?? scriptSets[0],
@@ -104,9 +55,6 @@ const Scene1MixedCut = () => {
   };
 
   const runGenerate = () => {
-    if (!config.originLang || !config.narratorLang || !config.voice || !config.duration) {
-      return message.warning('请先完成第一步的混剪配置');
-    }
     setPhase(Phase.Generate);
     setProgress(0);
     let p = 0;
@@ -144,22 +92,13 @@ const Scene1MixedCut = () => {
       />
 
       <Row gutter={16}>
-        {/* 左: 上传 + 混剪配置 */}
+        {/* 左: 上传 + 分析结果 */}
         <Col span={8}>
           <div className="section-card" style={{ marginBottom: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 12 }}>
               <ThunderboltOutlined style={{ color: '#6366f1' }} /> 上传剧集视频
             </div>
-            <VideoUploader
-              multiple
-              title="上传视频素材(可多选)"
-              desc="支持批量上传多个视频,mp4/mov,单个≤2G"
-            />
-
-            {/* 第一步:混剪配置 */}
-            <Divider style={{ margin: '16px 0 12px' }} />
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>混剪配置</div>
-            <ConfigFields config={config} onChange={setConfig} />
+            <VideoUploader />
           </div>
 
           {phase >= 2 && (
@@ -169,11 +108,6 @@ const Scene1MixedCut = () => {
               <div style={{ marginTop: 12, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
                 {script.summary}
               </div>
-
-              {/* 第一步配置摘要 */}
-              <Divider style={{ margin: '14px 0 10px' }} />
-              <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>本次混剪配置</div>
-              <ConfigSummary config={config} />
             </div>
           )}
 
@@ -204,8 +138,8 @@ const Scene1MixedCut = () => {
         {/* 中: 时间轴 / 创意方案 */}
         <Col span={9}>
           {phase === 1 && (
-            <div className="section-card" style={{ textAlign: 'center', padding: 40 }}>
-              <Empty description="上传素材并完成混剪配置后开始分析">
+            <div className="section-card" style={{ textAlign: 'center', padding: 60 }}>
+              <Empty description="请先上传视频并开始分析">
                 <Button type="primary" className="gradient-btn" size="large" onClick={runAnalyze}>
                   开始理解分析 <CaretRightOutlined />
                 </Button>
@@ -247,11 +181,7 @@ const Scene1MixedCut = () => {
 
           {phase === 3 && !done && (
             <Card>
-              <ProgressPanel
-                steps={steps}
-                progress={progress}
-                estimatedSeconds={Math.round(config.duration * 2.4)}
-              />
+              <ProgressPanel steps={steps} progress={progress} estimatedSeconds={960} />
             </Card>
           )}
 
@@ -298,88 +228,6 @@ const Scene1MixedCut = () => {
           </Card>
         </Col>
       </Row>
-    </div>
-  );
-};
-
-/** 配置表单项的通用样式 */
-const fieldStyle: React.CSSProperties = { width: '100%' };
-
-/** 第一步:混剪配置四项(原视频语言 / 解说语言 / 音色 / 生产视频时长) */
-const ConfigFields = ({
-  config,
-  onChange,
-}: {
-  config: MixConfig;
-  onChange: (c: MixConfig) => void;
-}) => {
-  const set = (patch: Partial<MixConfig>) => onChange({ ...config, ...patch });
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>原视频语言</div>
-        <Select
-          value={config.originLang}
-          options={originLangOptions}
-          onChange={v => set({ originLang: v })}
-          style={fieldStyle}
-          placeholder="选择原视频对白语言"
-        />
-      </div>
-
-      <div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>解说语言</div>
-        <Select
-          value={config.narratorLang}
-          options={narratorLangOptions}
-          onChange={v => set({ narratorLang: v })}
-          style={fieldStyle}
-          placeholder="选择 AI 解说语言"
-        />
-      </div>
-
-      <div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>解说音色</div>
-        <Select
-          value={config.voice}
-          options={voiceOptions}
-          onChange={v => set({ voice: v })}
-          style={fieldStyle}
-          placeholder="选择解说音色"
-        />
-      </div>
-
-      <div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>生产视频时长</div>
-        <Select
-          value={config.duration}
-          options={durationOptions}
-          onChange={v => set({ duration: v })}
-          style={fieldStyle}
-          placeholder="选择成片目标时长"
-        />
-      </div>
-    </div>
-  );
-};
-
-/** 配置摘要:进入分析/生成阶段后,在左侧展示本次的混剪配置 */
-const ConfigSummary = ({ config }: { config: MixConfig }) => {
-  const rows: { label: string; value: string }[] = [
-    { label: '原视频语言', value: config.originLang },
-    { label: '解说语言', value: config.narratorLang },
-    { label: '解说音色', value: config.voice },
-    { label: '生产视频时长', value: `${config.duration / 60} 分钟` },
-  ];
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {rows.map(r => (
-        <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-          <span style={{ color: '#9ca3af' }}>{r.label}</span>
-          <span style={{ color: '#374151', fontWeight: 500 }}>{r.value}</span>
-        </div>
-      ))}
     </div>
   );
 };
