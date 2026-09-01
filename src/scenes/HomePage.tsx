@@ -28,7 +28,7 @@ interface Feature {
   available: boolean;
 }
 
-// 六大剪辑功能;available 标记是否已上线(仅替换 Logo)
+// 六大剪辑功能;available 标记是否已上线(替换 Logo、混剪剧情)
 const features: Feature[] = [
   {
     key: 'scene1', icon: <ScissorOutlined />,
@@ -37,7 +37,7 @@ const features: Feature[] = [
     steps: ['上传视频', 'AI 提取高光', '生成素材'],
     color: '#6366f1', gradient: 'linear-gradient(135deg,#6366f1,#818cf8)',
     soft: '#eef2ff', shadow: 'rgba(99,102,241,.32)',
-    available: false,
+    available: true,
   },
   {
     key: 'scene2', icon: <SoundOutlined />,
