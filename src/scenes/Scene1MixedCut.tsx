@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Tag, Row, Col, message, Card, Divider, Select, Skeleton, Checkbox } from 'antd';
+import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox } from 'antd';
 import {
   ThunderboltOutlined,
   ArrowRightOutlined,
@@ -22,7 +22,6 @@ import {
   RocketOutlined,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
-import PreviewPlayer from '../components/PreviewPlayer';
 import TopSteps from '../components/TopSteps';
 import { scriptSets, type ScriptSet } from '../mock/highlights';
 import { useApp } from '../context/AppContext';
@@ -426,7 +425,7 @@ const Scene1MixedCut = () => {
         />
       )}
 
-      {/* ============ 第三页:创意方案 ============ */}
+      {/* ============ 第三页:创意方案(整宽横向卡片,无左列) ============ */}
       {phase === Phase.Plans && (
         <div className="section-card" style={{ padding: 28 }}>
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
@@ -435,131 +434,92 @@ const Scene1MixedCut = () => {
               理解分析完成,请选择创意方案
             </div>
             <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-              共 {scriptSets.length} 个方案;选择后可在时间轴上勾选/取消高光片段
+              共 {scriptSets.length} 个方案;点击卡片选中,解说词内容与方案主题一一对应
             </div>
           </div>
 
-          <Row gutter={16}>
-            {/* 左:分析结果 + 预览 */}
-            <Col span={8}>
-              <div style={{ background: '#f9fafb', borderRadius: 10, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontWeight: 600, marginBottom: 10 }}>剧集类型</div>
-                <Tag color="purple">都市 / 复仇 / 爽剧</Tag>
-                <div style={{ marginTop: 10, fontSize: 12.5, color: '#374151', lineHeight: 1.6 }}>
-                  {script.summary}
-                </div>
-                <Divider style={{ margin: '12px 0 10px' }} />
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  情感类型 <span style={{ color: '#6366f1' }}>{script.emotionTypes.length}</span>
-                </div>
-                <Row gutter={[8, 8]}>
-                  {script.emotionTypes.map(e => (
-                    <Col span={12} key={e.name}>
-                      <div
-                        style={{
-                          padding: 10, background: '#fff', borderRadius: 8,
-                          fontSize: 12, height: '100%', border: '1px solid #f3f4f6',
-                        }}
-                      >
-                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.name}</div>
-                        <div style={{ color: '#6b7280', lineHeight: 1.5 }}>{e.desc}</div>
-                      </div>
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-
-              <Card title="预览" size="small">
-                <PreviewPlayer url={uploadedFiles[0]?.url} />
-              </Card>
-            </Col>
-
-            {/* 右:创意方案横向卡片(参考图风格) */}
-            <Col span={16}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 12,
-                }}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>
+              创意方案 <span style={{ color: '#6366f1' }}>{scriptSets.length}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button size="small" onClick={selectAllScripts}>
+                一键全选
+              </Button>
+              <Button
+                type="primary"
+                className="gradient-btn"
+                size="small"
+                onClick={runGenerate}
               >
-                <div style={{ fontWeight: 600 }}>
-                  创意方案 <span style={{ color: '#6366f1' }}>{scriptSets.length}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button size="small" onClick={selectAllScripts}>
-                    一键全选
-                  </Button>
-                  <Button
-                    type="primary"
-                    className="gradient-btn"
-                    size="small"
-                    onClick={runGenerate}
-                  >
-                    生成解说
-                  </Button>
-                </div>
-              </div>
+                生成解说
+              </Button>
+            </div>
+          </div>
 
-              <div
-                id="plans-scroll"
-                style={{
-                  display: 'flex',
-                  gap: 12,
-                  overflowX: 'auto',
-                  paddingBottom: 8,
-                  position: 'relative',
-                }}
-              >
-                {scriptSets.map((s, idx) => {
-                  const selected = selectedScriptId === s.id;
-                  const cat = CATEGORIES[idx % CATEGORIES.length];
-                  return (
-                    <div
-                      key={s.id}
-                      style={{ minWidth: 280, maxWidth: 280, flex: '0 0 280px' }}
-                    >
-                      <PlanCard
-                        category={cat}
-                        title={s.title}
-                        script={s}
-                        selected={selected}
-                        onSelect={() => setSelectedScriptId(s.id)}
-                        voice={config.voice}
-                        narratorLang={config.narratorLang}
-                      />
-                    </div>
-                  );
-                })}
-                {/* 右侧滚动提示按钮 */}
+          <div
+            id="plans-scroll"
+            style={{
+              display: 'flex',
+              gap: 12,
+              overflowX: 'auto',
+              paddingBottom: 8,
+              position: 'relative',
+            }}
+          >
+            {scriptSets.map((s, idx) => {
+              const selected = selectedScriptId === s.id;
+              const cat = CATEGORIES[idx % CATEGORIES.length];
+              return (
                 <div
-                  style={{
-                    position: 'sticky',
-                    right: 0,
-                    alignSelf: 'center',
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    background: 'rgba(99,102,241,0.92)',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
-                    flex: '0 0 36px',
-                  }}
-                  onClick={() => {
-                    const el = document.getElementById('plans-scroll');
-                    if (el) el.scrollBy({ left: 300, behavior: 'smooth' });
-                  }}
+                  key={s.id}
+                  style={{ minWidth: 280, maxWidth: 280, flex: '0 0 280px' }}
                 >
-                  →
+                  <PlanCard
+                    category={cat}
+                    title={s.title}
+                    script={s}
+                    selected={selected}
+                    onSelect={() => setSelectedScriptId(s.id)}
+                    voice={config.voice}
+                    narratorLang={config.narratorLang}
+                  />
                 </div>
-              </div>
-            </Col>
-          </Row>
+              );
+            })}
+            {/* 右侧滚动提示按钮 */}
+            <div
+              style={{
+                position: 'sticky',
+                right: 0,
+                alignSelf: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                background: 'rgba(99,102,241,0.92)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
+                flex: '0 0 36px',
+              }}
+              onClick={() => {
+                const el = document.getElementById('plans-scroll');
+                if (el) el.scrollBy({ left: 300, behavior: 'smooth' });
+              }}
+            >
+              →
+            </div>
+          </div>
 
           {footer}
         </div>
@@ -960,15 +920,13 @@ const PlanCard = ({
       {/* 视频结构故事线 */}
       <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 6 }}>视频结构故事线</div>
 
-      {/* 高光片段列表 */}
+      {/* 高光片段列表(高度不限制,自然展开) */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
           marginBottom: 10,
-          maxHeight: 150,
-          overflowY: 'auto',
         }}
       >
         {script.highlights.map(h => {
@@ -1042,14 +1000,12 @@ const PlanCard = ({
         </div>
       </div>
 
-      {/* 多段解说词 */}
+      {/* 多段解说词(高度不限制,自然展开) */}
       <div
         style={{
           background: '#fafafa',
           borderRadius: 6,
           padding: 8,
-          maxHeight: 110,
-          overflowY: 'auto',
         }}
       >
         {narrations.map((n, i) => (
