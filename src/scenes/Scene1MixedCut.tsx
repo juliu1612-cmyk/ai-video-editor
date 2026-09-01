@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox, Input, Modal, Switch } from 'antd';
 import {
   ThunderboltOutlined,
@@ -312,6 +312,136 @@ const Scene1MixedCut = () => {
       `开始导出 ${exportCount} 个成片(字幕擦除:${eraseSubs ? '开' : '关'})`
     );
     setExportCtx(null);
+  };
+
+  // ===== 字幕擦除框:位置拖动 + 大小拖动(像素坐标,相对预览容器) =====
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [eraseBox, setEraseBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [drag, setDrag] = useState<null | { mode: 'move' | 'se' | 'sw' | 'ne' | 'nw'; startX: number; startY: number; box: { left: number; top: number; width: number; height: number } }>(null);
+
+  // 每次打开弹窗或切换预览后,重置擦除框为默认底部字幕区(需先测量容器)
+  useEffect(() => {
+    if (exportCtx === null || !eraseSubs) {
+      if (exportCtx === null) setEraseBox(null);
+      return;
+    }
+    const el = previewRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // 默认:水平 12% ~ 88%,垂直底部 18% 高度 18%(换算为像素)
+    const w = rect.width * 0.76;
+    const h = rect.height * 0.18;
+    setEraseBox({
+      left: rect.width * 0.12,
+      top: rect.height - rect.height * 0.18 - h,
+      width: w,
+      height: h,
+    });
+  }, [exportCtx, exportPreviewIdx, eraseSubs]);
+
+  // 在弹窗打开且打开擦除时,若预览容器尚未测量(modal 动画期间),做一次兜底测量
+  useEffect(() => {
+    if (exportCtx === null || !eraseSubs) return;
+    const t = setTimeout(() => {
+      const el = previewRef.current;
+      if (el && !eraseBox) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width && rect.height) {
+          const w = rect.width * 0.76;
+          const h = rect.height * 0.18;
+          setEraseBox({
+            left: rect.width * 0.12,
+            top: rect.height - rect.height * 0.18 - h,
+            width: w,
+            height: h,
+          });
+        }
+      }
+    }, 100);
+    return () => clearTimeout(t);
+  }, [exportCtx, eraseSubs, eraseBox]);
+
+  // 拖拽处理:move = 移动位置;se/sw/ne/nw = 四角调整大小
+  const onEraseMouseDown = (e: React.MouseEvent, mode: 'move' | 'se' | 'sw' | 'ne' | 'nw') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!eraseBox) return;
+    setDrag({
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      box: { ...eraseBox },
+    });
+  };
+
+  // 在 window 上监听移动/松开(拖拽期间生效)
+  useEffect(() => {
+    if (!drag) return;
+    const el = previewRef.current;
+    const rect = el?.getBoundingClientRect();
+    if (!rect) return;
+    const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - drag.startX;
+      const dy = ev.clientY - drag.startY;
+      const b = drag.box;
+      const maxW = rect.width;
+      const maxH = rect.height;
+      let next = { ...b };
+      if (drag.mode === 'move') {
+        next.left = clamp(b.left + dx, 0, maxW - b.width);
+        next.top = clamp(b.top + dy, 0, maxH - b.height);
+      } else {
+        const isE = drag.mode === 'se' || drag.mode === 'ne';
+        const isS = drag.mode === 'se' || drag.mode === 'sw';
+        if (isE) next.width = clamp(b.width + dx, 20, maxW - b.left);
+        if (isS) next.height = clamp(b.height + dy, 20, maxH - b.top);
+        if (drag.mode === 'nw') {
+          next.left = clamp(b.left + dx, 0, b.left + b.width - 20);
+          next.width = b.left + b.width - next.left;
+          next.top = clamp(b.top + dy, 0, b.top + b.height - 20);
+          next.height = b.top + b.height - next.top;
+        }
+        if (drag.mode === 'ne') {
+          next.width = clamp(b.width + dx, 20, maxW - b.left);
+          next.top = clamp(b.top + dy, 0, b.top + b.height - 20);
+          next.height = b.top + b.height - next.top;
+        }
+        if (drag.mode === 'sw') {
+          next.height = clamp(b.height + dy, 20, maxH - b.top);
+          next.left = clamp(b.left + dx, 0, b.left + b.width - 20);
+          next.width = b.left + b.width - next.left;
+        }
+      }
+      setEraseBox(next);
+    };
+    const onUp = () => setDrag(null);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [drag]);
+
+  // 右上角(ne)需要把宽/高合并到 right 逻辑——上面已覆盖
+  
+  // 重置擦除框为默认位置
+  const resetEraseBox = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const w = rect.width * 0.76;
+    const h = rect.height * 0.18;
+    setEraseBox({
+      left: rect.width * 0.12,
+      top: rect.height - rect.height * 0.18 - h,
+      width: w,
+      height: h,
+    });
   };
 
   // TopSteps 步骤状态(始终按 3 个语义步骤渲染)
@@ -736,96 +866,12 @@ const Scene1MixedCut = () => {
         }
       >
         <div style={{ display: 'flex', gap: 24, paddingTop: 8 }}>
-          {/* 左侧:视频预览(渐变 + 字幕擦除框叠加) */}
-          <div style={{ flex: '0 0 260px' }}>
-            <div
-              style={{
-                position: 'relative',
-                aspectRatio: '9 / 16',
-                maxHeight: 360,
-                borderRadius: 8,
-                background: exportPreviewGradient,
-                overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              }}
-            >
-              {/* 时长角标(根据当前预览 item 显示) */}
-              <div
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  bottom: 8,
-                  padding: '2px 7px',
-                  background: 'rgba(0,0,0,0.6)',
-                  color: '#fff',
-                  fontSize: 10.5,
-                  fontFamily: 'monospace',
-                  borderRadius: 4,
-                }}
-              >
-                00:29
-              </div>
-              {/* 字幕擦除框(开关关闭时不渲染) */}
-              {eraseSubs && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: '12%',
-                    right: '12%',
-                    bottom: '18%',
-                    height: '18%',
-                    border: '1.5px dashed #2563eb',
-                    borderRadius: 2,
-                    pointerEvents: 'none',
-                  }}
-                >
-                  {/* 4 角控制点 */}
-                  {[
-                    { top: -3, left: -3 },
-                    { top: -3, right: -3 },
-                    { bottom: -3, left: -3 },
-                    { bottom: -3, right: -3 },
-                  ].map((p, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        position: 'absolute',
-                        width: 6,
-                        height: 6,
-                        background: '#fff',
-                        border: '1.5px solid #2563eb',
-                        ...p,
-                      }}
-                    />
-                  ))}
-                  {/* 框上沿文字标签 */}
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: -22,
-                      left: 0,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#2563eb',
-                      background: '#fff',
-                      padding: '1px 6px',
-                      borderRadius: 3,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    字幕擦除框
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 批量导出时:左侧缩略图列(默认主预览正下方),点击切换当前预览视频 */}
+          {/* 批量导出时:视频切换缩略图列(视频预览模块的左侧) */}
           {exportCtx === 'batch' && doneFiles.length > 1 && (
             <div
               data-testid="export-preview-list"
               style={{
-                flex: '0 0 88px',
+                flex: '0 0 80px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
@@ -845,7 +891,7 @@ const Scene1MixedCut = () => {
                     onClick={() => setExportPreviewIdx(i)}
                     style={{
                       position: 'relative',
-                      width: 88,
+                      width: 80,
                       aspectRatio: '9 / 16',
                       borderRadius: 6,
                       background: cover,
@@ -880,6 +926,101 @@ const Scene1MixedCut = () => {
             </div>
           )}
 
+          {/* 视频预览模块(渐变 + 可拖拽字幕擦除框叠加) */}
+          <div style={{ flex: '0 0 260px' }}>
+            <div
+              ref={previewRef}
+              style={{
+                position: 'relative',
+                aspectRatio: '9 / 16',
+                maxHeight: 360,
+                borderRadius: 8,
+                background: exportPreviewGradient,
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              }}
+            >
+              {/* 时长角标(根据当前预览 item 显示) */}
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  bottom: 8,
+                  padding: '2px 7px',
+                  background: 'rgba(0,0,0,0.6)',
+                  color: '#fff',
+                  fontSize: 10.5,
+                  fontFamily: 'monospace',
+                  borderRadius: 4,
+                }}
+              >
+                00:29
+              </div>
+              {/* 字幕擦除框(开关关闭时不渲染);支持拖动位置 + 四角调整大小 */}
+              {eraseSubs && eraseBox && (
+                <div
+                  data-testid="erase-box"
+                  onMouseDown={(e) => onEraseMouseDown(e, 'move')}
+                  style={{
+                    position: 'absolute',
+                    left: eraseBox.left,
+                    top: eraseBox.top,
+                    width: eraseBox.width,
+                    height: eraseBox.height,
+                    border: '1.5px dashed #2563eb',
+                    borderRadius: 2,
+                    cursor: 'move',
+                    userSelect: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {/* 4 角控制点(拖动调整大小) */}
+                  {([
+                    { mode: 'nw', style: { top: -5, left: -5, cursor: 'nwse-resize' } },
+                    { mode: 'ne', style: { top: -5, right: -5, cursor: 'nesw-resize' } },
+                    { mode: 'sw', style: { bottom: -5, left: -5, cursor: 'nesw-resize' } },
+                    { mode: 'se', style: { bottom: -5, right: -5, cursor: 'nwse-resize' } },
+                  ] as const).map((c) => (
+                    <span
+                      key={c.mode}
+                      data-testid={`erase-handle-${c.mode}`}
+                      onMouseDown={(e) => onEraseMouseDown(e, c.mode)}
+                      style={{
+                        position: 'absolute',
+                        width: 10,
+                        height: 10,
+                        background: '#fff',
+                        border: '1.5px solid #2563eb',
+                        borderRadius: 2,
+                        zIndex: 2,
+                        cursor: c.style.cursor,
+                        ...(c.style as any),
+                      }}
+                    />
+                  ))}
+                  {/* 框上沿文字标签 */}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -22,
+                      left: 0,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#2563eb',
+                      background: '#fff',
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    字幕擦除框
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* 右侧:设置区 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* 视频(MP4)导出 */}
@@ -912,6 +1053,13 @@ const Scene1MixedCut = () => {
             >
               默认已框选常见底部字幕区,可在画面上按住拖动重新框选覆盖原片字幕位置。
             </div>
+            {eraseSubs && (
+              <div style={{ paddingLeft: 24, marginTop: 8 }}>
+                <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }} onClick={resetEraseBox}>
+                  重置框选
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
