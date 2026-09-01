@@ -124,9 +124,8 @@ const Scene1MixedCut = () => {
   const { uploadedFiles, setNav } = useApp();
   const [phase, setPhase] = useState<PhaseValue>(1);
 
-  // 第一页:理解分析进度(由独立分析页使用)
+  // 第一页:理解分析进度(由独立分析页使用,0-100)
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
-  const [analyzed, setAnalyzed] = useState(false);
 
   // 第一页:混剪配置(原视频语言/解说语言/音色/生产视频时长)
   const [config, setConfig] = useState<MixConfig>(defaultConfig);
@@ -151,20 +150,19 @@ const Scene1MixedCut = () => {
   );
 
   // 第一页:点击「开始理解分析」→ 跳到独立分析页(Phase.Analyze),
-  // 分析动画在分析页内完成,完成 100% 后停留 900ms 让用户看清完成态,再自动跳到 Phase.Plans
+  // 分析动画在分析页内完成:4 个子卡随进度阈值(25/50/75/100%)从上到下依次填充;
+  // 全部填充完成后停留 900ms,自动跳到 Phase.Plans
   const runAnalyze = () => {
     if (!uploadedFiles.length) return message.warning('请先上传素材');
-    setAnalyzed(false);
     setAnalyzeProgress(0);
     setPhase(Phase.Analyze);
     let p = 0;
     const t = setInterval(() => {
-      p += 2 + Math.random() * 3; // 节奏更慢,给用户看清骨架动画
+      p += 2 + Math.random() * 3; // 节奏更慢,给用户看清填充过程
       if (p >= 100) {
         p = 100;
         clearInterval(t);
         setAnalyzeProgress(100);
-        setAnalyzed(true);
         message.success('剧情分析完成,自动进入创意方案');
         setTimeout(() => setPhase(Phase.Plans), 900);
       } else {
@@ -384,7 +382,7 @@ const Scene1MixedCut = () => {
         </div>
       )}
 
-      {/* ============ 分析页(参考图风格):原片缩略图 + 进度行 + 4 个分析子卡 ============ */}
+      {/* ============ 分析页(参考图风格):原片缩略图 + 进度行 + 4 个分析子卡从上到下依次填充 ============ */}
       {phase === Phase.Analyze && (
         <AnalyzePage
           fileName={uploadedFiles[0]?.name ?? '原片 剧集'}
@@ -392,7 +390,12 @@ const Scene1MixedCut = () => {
           duration={uploadedFiles[0]?.duration ?? 0}
           progress={analyzeProgress}
           script={script}
-          done={analyzed}
+          filledCount={
+            analyzeProgress >= 100 ? 4 :
+            analyzeProgress >= 75 ? 3 :
+            analyzeProgress >= 50 ? 2 :
+            analyzeProgress >= 25 ? 1 : 0
+          }
         />
       )}
 
@@ -604,20 +607,22 @@ const AnalyzePage = ({
   duration,
   progress,
   script,
-  done,
+  filledCount,
 }: {
   fileName: string;
   cover?: string;
   duration: number;
   progress: number;
   script: ScriptSet;
-  done: boolean;
+  /** 已从上到下完成填充的子卡数量(0-4) */
+  filledCount: number;
 }) => {
   const minutes = Math.floor(duration / 60);
   const seconds = Math.floor(duration % 60);
+  const allDone = filledCount >= 4;
   // 预计还需 N 分钟:总耗时约 5 分钟(模拟),根据当前进度反算剩余
   const totalSeconds = 300;
-  const remainSec = done ? 0 : Math.max(1, Math.round(totalSeconds * (1 - progress / 100)));
+  const remainSec = allDone ? 0 : Math.max(1, Math.round(totalSeconds * (1 - progress / 100)));
   const remainMin = Math.max(1, Math.ceil(remainSec / 60));
   const sellingPoints = useMemo(() => buildSellingPoints(script), [script]);
 
@@ -670,23 +675,23 @@ const AnalyzePage = ({
           alignItems: 'center',
           gap: 6,
           fontSize: 12.5,
-          color: done ? '#10b981' : '#6366f1',
+          color: allDone ? '#10b981' : '#6366f1',
           marginBottom: 20,
         }}
       >
-        {done ? (
+        {allDone ? (
           <CheckCircleFilled style={{ color: '#10b981' }} />
         ) : (
           <LoadingOutlined />
         )}
-        {done
+        {allDone
           ? '剧情分析完成'
           : `AI 正在逐集分析剧情,已完成 ${progress.toFixed(0)}%,预计还需 ${remainMin} 分钟`}
       </div>
 
-      {/* 4 个分析子卡 */}
-      <AnalyzeCard icon={<TagsOutlined />} title="剧集类型">
-        {done ? (
+      {/* 4 个分析子卡:从上到下依次填充(剧集类型 → 剧情概览 → 情感类型 → 卖点内容) */}
+      <AnalyzeCard icon={<TagsOutlined />} title="剧集类型" filled={filledCount > 0}>
+        {filledCount > 0 ? (
           <Tag color="purple" style={{ marginTop: 4 }}>
             都市 / 复仇 / 爽剧
           </Tag>
@@ -695,8 +700,8 @@ const AnalyzePage = ({
         )}
       </AnalyzeCard>
 
-      <AnalyzeCard icon={<FileTextOutlined />} title="剧情概览">
-        {done ? (
+      <AnalyzeCard icon={<FileTextOutlined />} title="剧情概览" filled={filledCount > 1}>
+        {filledCount > 1 ? (
           <div style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.7, marginTop: 4 }}>
             {script.summary}
           </div>
@@ -709,9 +714,10 @@ const AnalyzePage = ({
 
       <AnalyzeCard
         icon={<ApiOutlined />}
-        title={`情感类型 ${done ? script.emotionTypes.length : ''}`}
+        title={`情感类型 ${filledCount > 2 ? script.emotionTypes.length : ''}`}
+        filled={filledCount > 2}
       >
-        {done ? (
+        {filledCount > 2 ? (
           <Row gutter={[10, 10]} style={{ marginTop: 4 }}>
             {script.emotionTypes.map(e => (
               <Col span={12} key={e.name}>
@@ -742,9 +748,10 @@ const AnalyzePage = ({
 
       <AnalyzeCard
         icon={<StarFilled style={{ color: '#f59e0b' }} />}
-        title={`卖点内容 ${done ? sellingPoints.length : ''}`}
+        title={`卖点内容 ${filledCount > 3 ? sellingPoints.length : ''}`}
+        filled={filledCount > 3}
       >
-        {done ? (
+        {filledCount > 3 ? (
           <ol style={{ margin: '4px 0 0 0', padding: 0, listStyle: 'none' }}>
             {sellingPoints.map((p, i) => (
               <li
@@ -794,29 +801,36 @@ const AnalyzePage = ({
   );
 };
 
-/** 单个分析子卡:左 icon + 标题,内容由 children 渲染 */
+/** 单个分析子卡:左 icon + 标题 + 填充完成对勾,内容由 children 渲染 */
 const AnalyzeCard = ({
   icon,
   title,
+  filled,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
+  filled?: boolean;
   children: React.ReactNode;
 }) => {
   return (
     <div
       style={{
         background: '#fff',
-        border: '1px solid #eef0f4',
+        border: `1px solid ${filled ? '#d1fae5' : '#eef0f4'}`,
         borderRadius: 8,
         padding: '12px 14px',
         marginBottom: 12,
+        transition: 'border-color .3s',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#1f2937' }}>
         <span style={{ color: '#6366f1' }}>{icon}</span>
         {title}
+        <span style={{ flex: 1 }} />
+        {filled && (
+          <CheckCircleFilled style={{ color: '#10b981', fontSize: 14 }} />
+        )}
       </div>
       {children}
     </div>
