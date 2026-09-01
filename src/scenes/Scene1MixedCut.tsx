@@ -427,22 +427,6 @@ const Scene1MixedCut = () => {
   }, [drag]);
 
   // 右上角(ne)需要把宽/高合并到 right 逻辑——上面已覆盖
-  
-  // 重置擦除框为默认位置
-  const resetEraseBox = () => {
-    const el = previewRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const w = rect.width * 0.76;
-    const h = rect.height * 0.18;
-    setEraseBox({
-      left: rect.width * 0.12,
-      top: rect.height - rect.height * 0.18 - h,
-      width: w,
-      height: h,
-    });
-  };
 
   // TopSteps 步骤状态(始终按 3 个语义步骤渲染)
   const topCurrent =
@@ -1053,13 +1037,6 @@ const Scene1MixedCut = () => {
             >
               默认已框选常见底部字幕区,可在画面上按住拖动重新框选覆盖原片字幕位置。
             </div>
-            {eraseSubs && (
-              <div style={{ paddingLeft: 24, marginTop: 8 }}>
-                <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }} onClick={resetEraseBox}>
-                  重置框选
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 
