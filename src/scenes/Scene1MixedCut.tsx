@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox } from 'antd';
+import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox, Input } from 'antd';
 import {
   ThunderboltOutlined,
   ArrowRightOutlined,
@@ -874,7 +874,15 @@ const PlanCard = ({
   voice: string;
   narratorLang: string;
 }) => {
-  const narrations = useMemo(() => getNarrationsForScript(script), [script]);
+  // 卡级别可修改状态:语言/音色/解说文案(与其它卡片互不影响)
+  const [lang, setLang] = useState(narratorLang);
+  const [voiceName, setVoiceName] = useState(voice);
+  const [narrations, setNarrations] = useState<string[]>(() => getNarrationsForScript(script));
+
+  const updateNarration = (idx: number, text: string) => {
+    setNarrations(prev => prev.map((n, i) => (i === idx ? text : n)));
+  };
+
   return (
     <div
       onClick={onSelect}
@@ -970,50 +978,76 @@ const PlanCard = ({
 
       <Divider style={{ margin: '0 0 8px' }} />
 
-      {/* 解说词(可编辑) + 语言选择 */}
+      {/* 解说词(可编辑) + 语言/音色(可修改) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: '#374151' }}>
           <FileTextOutlined style={{ marginRight: 4 }} />
           解说词 <span style={{ color: '#9ca3af', fontWeight: 400 }}>(可编辑)</span>
         </div>
         <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 11.5,
-            color: '#6b7280',
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={e => e.stopPropagation()}
         >
-          <span>{narratorLang}</span>
-          <div
-            style={{
-              width: 22, height: 22, borderRadius: 11,
-              background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
-              color: '#fff', fontSize: 10, fontWeight: 600,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            云
-          </div>
-          <span>{voice}</span>
+          <Select
+            size="small"
+            value={lang}
+            options={narratorLangOptions}
+            onChange={setLang}
+            style={{ width: 86 }}
+            popupMatchSelectWidth={false}
+          />
+          <Select
+            size="small"
+            value={voiceName}
+            options={voiceOptions}
+            onChange={setVoiceName}
+            suffixIcon={
+              <div
+                style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+                  color: '#fff', fontSize: 9, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                云
+              </div>
+            }
+            style={{ width: 110 }}
+            popupMatchSelectWidth={false}
+          />
         </div>
       </div>
 
-      {/* 多段解说词(高度不限制,自然展开) */}
+      {/* 多段解说词(可编辑,高度自然展开) */}
       <div
         style={{
           background: '#fafafa',
           borderRadius: 6,
           padding: 8,
         }}
+        onClick={e => e.stopPropagation()}
       >
         {narrations.map((n, i) => (
-          <div key={i} style={{ fontSize: 11, lineHeight: 1.6, color: '#374151', marginBottom: 4 }}>
-            <div style={{ color: '#6366f1', fontWeight: 600, marginBottom: 2 }}>
-              {narratorLang} {i + 1}
+          <div key={i} style={{ marginBottom: 6 }}>
+            <div style={{ color: '#6366f1', fontWeight: 600, marginBottom: 2, fontSize: 11 }}>
+              {lang} {i + 1}
             </div>
-            <div>{n}</div>
+            <Input.TextArea
+              value={n}
+              onChange={e => updateNarration(i, e.target.value)}
+              autoSize={{ minRows: 2 }}
+              variant="borderless"
+              style={{
+                fontSize: 11,
+                lineHeight: 1.6,
+                color: '#374151',
+                background: '#fff',
+                borderRadius: 4,
+                padding: '4px 6px',
+                resize: 'none',
+              }}
+            />
           </div>
         ))}
       </div>
