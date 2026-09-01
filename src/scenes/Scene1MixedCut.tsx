@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Tag, Row, Col, message, Card, Divider, Select } from 'antd';
+import { Button, Tag, Row, Col, message, Card, Divider, Select, Skeleton } from 'antd';
 import {
   ThunderboltOutlined,
   ArrowRightOutlined,
@@ -7,6 +7,12 @@ import {
   CheckCircleFilled,
   VideoCameraOutlined,
   SettingOutlined,
+  LoadingOutlined,
+  ApiOutlined,
+  FileTextOutlined,
+  TagsOutlined,
+  StarFilled,
+  BulbOutlined,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import HighlightTimeline from '../components/HighlightTimeline';
@@ -15,16 +21,35 @@ import ProgressPanel, { type Step } from '../components/ProgressPanel';
 import TopSteps from '../components/TopSteps';
 import ScriptPlanCard from '../components/ScriptPlanCard';
 import FinalPreviewPanel from '../components/FinalPreviewPanel';
-import { scriptSets } from '../mock/highlights';
+import { scriptSets, type ScriptSet } from '../mock/highlights';
 import { useApp } from '../context/AppContext';
 
-// 三页:第一页 上传+混剪配置+理解分析 / 第二页 创意方案 / 第三页 生成解说视频
+// 四个状态页:上传 → 分析 → 创意方案 → 生成
+// 顶部的 TopSteps 始终按 3 个语义步骤渲染(理解分析/创意方案/生成解说视频)
 const Phase = {
   Upload: 1,
-  Plans: 2,
-  Generate: 3,
+  Analyze: 2,
+  Plans: 3,
+  Generate: 4,
 } as const;
 type PhaseValue = (typeof Phase)[keyof typeof Phase];
+
+// 分析完成后,基于当前剧集高光片段扩展为 10 条卖点(参考图)
+const buildSellingPoints = (s: ScriptSet): string[] => {
+  const points: string[] = [];
+  s.highlights.forEach(h => {
+    points.push(h.desc);
+  });
+  // 高光不足 10 条时,用情感类型 + 高光类型组合补足
+  let i = 0;
+  while (points.length < 10) {
+    const emo = s.emotionTypes[i % s.emotionTypes.length]?.name ?? '强冲突';
+    const t = s.highlights[i % s.highlights.length]?.type ?? '钩子';
+    points.push(`${emo}驱动的「${t}」高光,极具话题传播度`);
+    i++;
+  }
+  return points.slice(0, 10);
+};
 
 // ---------- 第一页:混剪配置 ----------
 interface MixConfig {
@@ -77,8 +102,7 @@ const Scene1MixedCut = () => {
   const { uploadedFiles } = useApp();
   const [phase, setPhase] = useState<PhaseValue>(1);
 
-  // 第一页:理解分析状态
-  const [analyzing, setAnalyzing] = useState(false);
+  // 第一页:理解分析进度(由独立分析页使用)
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [analyzed, setAnalyzed] = useState(false);
 
@@ -105,31 +129,31 @@ const Scene1MixedCut = () => {
     );
   };
 
-  // 第一页:开始理解分析(进度动画在本页内完成)
+  // 第一页:点击「开始理解分析」→ 跳到独立分析页(Phase.Analyze),
+  // 分析动画在分析页内完成,完成 100% 后停留 900ms 让用户看清完成态,再自动跳到 Phase.Plans
   const runAnalyze = () => {
     if (!uploadedFiles.length) return message.warning('请先上传素材');
-    setAnalyzing(true);
     setAnalyzed(false);
     setAnalyzeProgress(0);
+    setSelectedHighlights(script.highlights.map(h => h.id));
+    setPhase(Phase.Analyze);
     let p = 0;
     const t = setInterval(() => {
-      p += 5 + Math.random() * 6;
+      p += 2 + Math.random() * 3; // 节奏更慢,给用户看清骨架动画
       if (p >= 100) {
         p = 100;
         clearInterval(t);
-        setAnalyzing(false);
+        setAnalyzeProgress(100);
         setAnalyzed(true);
-        setSelectedHighlights(script.highlights.map(h => h.id));
-        message.success('理解分析完成');
+        message.success('剧情分析完成,自动进入创意方案');
+        setTimeout(() => setPhase(Phase.Plans), 900);
+      } else {
+        setAnalyzeProgress(p);
       }
-      setAnalyzeProgress(p);
-    }, 120);
+    }, 140);
   };
 
-  // 第一页 → 第二页
-  const goPlans = () => setPhase(Phase.Plans);
-
-  // 第二页 → 第三页:开始生成
+  // 创意方案 → 生成:开始生成解说视频
   const runGenerate = () => {
     setPhase(Phase.Generate);
     setGenerating(true);
@@ -152,7 +176,6 @@ const Scene1MixedCut = () => {
   // 完成后重新制作:回到第一页并清空
   const reset = () => {
     setPhase(Phase.Upload);
-    setAnalyzing(false);
     setAnalyzed(false);
     setAnalyzeProgress(0);
     setGenerating(false);
@@ -161,11 +184,16 @@ const Scene1MixedCut = () => {
     setSelectedHighlights([]);
   };
 
-  // ProgressPanel 步骤状态(分析/生成共用)
-  const progressSteps: Step[] = [
-    { key: '1', label: '理解分析', status: phase === 1 ? (analyzed ? 'finish' : 'process') : 'finish' },
-    { key: '2', label: '创意方案', status: phase === 2 ? 'process' : phase > 2 ? 'finish' : 'wait' },
-    { key: '3', label: '生成解说视频', status: phase === 3 ? 'process' : 'wait' },
+  // TopSteps 步骤状态(始终按 3 个语义步骤渲染)
+  const topCurrent =
+    phase === Phase.Upload ? 1 :
+    phase === Phase.Analyze ? 1 :
+    phase === Phase.Plans ? 2 :
+    3;
+  const topSteps: Step[] = [
+    { key: '1', label: '理解分析', status: phase === Phase.Upload || phase === Phase.Analyze ? (analyzed ? 'finish' : 'process') : 'finish' },
+    { key: '2', label: '创意方案', status: phase === Phase.Plans ? 'process' : phase === Phase.Generate ? 'finish' : 'wait' },
+    { key: '3', label: '生成解说视频', status: phase === Phase.Generate ? 'process' : 'wait' },
   ];
 
   // 页脚按钮(与替换 Logo 场景同款风格)
@@ -180,22 +208,21 @@ const Scene1MixedCut = () => {
         borderTop: '1px solid #f3f4f6',
       }}
     >
-      {phase === 1 && (
+      {phase === Phase.Upload && (
         <>
           <span />
           <Button
             type="primary"
             className="gradient-btn"
             size="large"
-            disabled={analyzing}
-            onClick={analyzed ? goPlans : runAnalyze}
+            disabled={!uploadedFiles.length}
+            onClick={runAnalyze}
           >
-            {analyzed ? '查看创意方案' : '开始理解分析'}
-            <ArrowRightOutlined />
+            开始理解分析 <ArrowRightOutlined />
           </Button>
         </>
       )}
-      {phase === 2 && (
+      {phase === Phase.Plans && (
         <>
           <Button icon={<ArrowLeftOutlined />} onClick={() => setPhase(Phase.Upload)}>
             上一步
@@ -205,14 +232,15 @@ const Scene1MixedCut = () => {
           </Button>
         </>
       )}
-      {phase === 3 && <span />}
+      {phase === Phase.Generate && <span />}
+      {phase === Phase.Analyze && <span />}
     </div>
   );
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <TopSteps
-        current={phase}
+        current={topCurrent}
         steps={['理解分析', '创意方案', '生成解说视频']}
       />
 
@@ -316,37 +344,24 @@ const Scene1MixedCut = () => {
             </Col>
           </Row>
 
-          {analyzing && (
-            <div style={{ padding: 40 }}>
-              <ProgressPanel
-                steps={progressSteps}
-                progress={analyzeProgress}
-                estimatedSeconds={60}
-              />
-            </div>
-          )}
-
-          {analyzed && (
-            <div
-              style={{
-                textAlign: 'center',
-                marginTop: 20,
-                fontSize: 13,
-                color: '#10b981',
-                fontWeight: 600,
-              }}
-            >
-              <CheckCircleFilled style={{ marginRight: 6 }} />
-              理解分析完成,已识别 {scriptSets.length} 个创意方案
-            </div>
-          )}
-
           {footer}
         </div>
       )}
 
-      {/* ============ 第二页:创意方案 ============ */}
-      {phase === 2 && (
+      {/* ============ 分析页(参考图风格):原片缩略图 + 进度行 + 4 个分析子卡 ============ */}
+      {phase === Phase.Analyze && (
+        <AnalyzePage
+          fileName={uploadedFiles[0]?.name ?? '原片 剧集'}
+          cover={uploadedFiles[0]?.cover}
+          duration={uploadedFiles[0]?.duration ?? 0}
+          progress={analyzeProgress}
+          script={script}
+          done={analyzed}
+        />
+      )}
+
+      {/* ============ 第三页:创意方案 ============ */}
+      {phase === Phase.Plans && (
         <div className="section-card" style={{ padding: 28 }}>
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 700 }}>
@@ -427,13 +442,13 @@ const Scene1MixedCut = () => {
         </div>
       )}
 
-      {/* ============ 第三页:生成解说视频 ============ */}
-      {phase === 3 && (
+      {/* ============ 第四页:生成解说视频 ============ */}
+      {phase === Phase.Generate && (
         <div className="section-card" style={{ padding: 28 }}>
           {generating && (
             <div style={{ padding: 40 }}>
               <ProgressPanel
-                steps={progressSteps}
+                steps={topSteps}
                 progress={genProgress}
                 estimatedSeconds={Math.round(config.duration * 2.4)}
               />
@@ -454,6 +469,241 @@ const Scene1MixedCut = () => {
           {footer}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * 独立分析页(参考图风格):
+ * - 顶部:原片 剧集 N + 视频缩略图(显示文件名 + 时长)
+ * - 进度行:分析中 "AI 正在逐集分析剧情,已完成 X%,预计还需 N 分钟";
+ *         分析完成 "剧情分析完成"(绿色对勾)
+ * - 4 个分析子卡(白底圆角边框):
+ *   1) 剧集类型   2) 剧情概览   3) 情感类型 N(2x2)   4) 卖点内容 10(编号列表)
+ *   - 分析中:渲染骨架条(Skeleton)
+ *   - 完成:渲染真实内容
+ */
+const AnalyzePage = ({
+  fileName,
+  cover,
+  duration,
+  progress,
+  script,
+  done,
+}: {
+  fileName: string;
+  cover?: string;
+  duration: number;
+  progress: number;
+  script: ScriptSet;
+  done: boolean;
+}) => {
+  const minutes = Math.floor(duration / 60);
+  const seconds = Math.floor(duration % 60);
+  // 预计还需 N 分钟:总耗时约 5 分钟(模拟),根据当前进度反算剩余
+  const totalSeconds = 300;
+  const remainSec = done ? 0 : Math.max(1, Math.round(totalSeconds * (1 - progress / 100)));
+  const remainMin = Math.max(1, Math.ceil(remainSec / 60));
+  const sellingPoints = useMemo(() => buildSellingPoints(script), [script]);
+
+  return (
+    <div className="section-card" style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>
+      {/* 顶部:原片 剧集 1 + 缩略图 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <FileTextOutlined style={{ color: '#6366f1', fontSize: 16 }} />
+        <span style={{ fontSize: 14, fontWeight: 600 }}>原片 剧集 1</span>
+      </div>
+      <div
+        style={{
+          position: 'relative',
+          width: 88,
+          height: 56,
+          borderRadius: 6,
+          background: cover || 'linear-gradient(135deg, #6366f1, #a855f7)',
+          overflow: 'hidden',
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            bottom: 0,
+            padding: '2px 6px',
+            background: 'rgba(0,0,0,0.5)',
+            color: '#fff',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            borderTopRightRadius: 6,
+          }}
+        >
+          {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {fileName}
+      </div>
+
+      {/* 进度行 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <BulbOutlined style={{ color: '#6366f1', fontSize: 16 }} />
+        <span style={{ fontSize: 14, fontWeight: 600 }}>剧情分析</span>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12.5,
+          color: done ? '#10b981' : '#6366f1',
+          marginBottom: 20,
+        }}
+      >
+        {done ? (
+          <CheckCircleFilled style={{ color: '#10b981' }} />
+        ) : (
+          <LoadingOutlined />
+        )}
+        {done
+          ? '剧情分析完成'
+          : `AI 正在逐集分析剧情,已完成 ${progress.toFixed(0)}%,预计还需 ${remainMin} 分钟`}
+      </div>
+
+      {/* 4 个分析子卡 */}
+      <AnalyzeCard icon={<TagsOutlined />} title="剧集类型">
+        {done ? (
+          <Tag color="purple" style={{ marginTop: 4 }}>
+            都市 / 复仇 / 爽剧
+          </Tag>
+        ) : (
+          <Skeleton.Input active size="small" style={{ width: 220, marginTop: 8 }} />
+        )}
+      </AnalyzeCard>
+
+      <AnalyzeCard icon={<FileTextOutlined />} title="剧情概览">
+        {done ? (
+          <div style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.7, marginTop: 4 }}>
+            {script.summary}
+          </div>
+        ) : (
+          <div style={{ marginTop: 4 }}>
+            <Skeleton active paragraph={{ rows: 3 }} title={false} />
+          </div>
+        )}
+      </AnalyzeCard>
+
+      <AnalyzeCard
+        icon={<ApiOutlined />}
+        title={`情感类型 ${done ? script.emotionTypes.length : ''}`}
+      >
+        {done ? (
+          <Row gutter={[10, 10]} style={{ marginTop: 4 }}>
+            {script.emotionTypes.map(e => (
+              <Col span={12} key={e.name}>
+                <div
+                  style={{
+                    padding: 10,
+                    background: '#f9fafb',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    height: '100%',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.name}</div>
+                  <div style={{ color: '#6b7280', lineHeight: 1.55 }}>{e.desc}</div>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        ) : (
+          <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Skeleton.Input active size="small" style={{ height: 60 }} />
+            <Skeleton.Input active size="small" style={{ height: 60 }} />
+            <Skeleton.Input active size="small" style={{ height: 60 }} />
+            <Skeleton.Input active size="small" style={{ height: 60 }} />
+          </div>
+        )}
+      </AnalyzeCard>
+
+      <AnalyzeCard
+        icon={<StarFilled style={{ color: '#f59e0b' }} />}
+        title={`卖点内容 ${done ? sellingPoints.length : ''}`}
+      >
+        {done ? (
+          <ol style={{ margin: '4px 0 0 0', padding: 0, listStyle: 'none' }}>
+            {sellingPoints.map((p, i) => (
+              <li
+                key={i}
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'flex-start',
+                  padding: '8px 10px',
+                  background: i % 2 ? '#f9fafb' : '#fff',
+                  border: '1px solid #f3f4f6',
+                  borderRadius: 6,
+                  fontSize: 12.5,
+                  color: '#374151',
+                  marginBottom: 6,
+                }}
+              >
+                <span
+                  style={{
+                    minWidth: 22,
+                    height: 22,
+                    borderRadius: 4,
+                    background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {i + 1}
+                </span>
+                <span style={{ flex: 1, lineHeight: 1.6 }}>{p}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton.Input key={i} active size="small" style={{ height: 18, width: '100%' }} />
+            ))}
+          </div>
+        )}
+      </AnalyzeCard>
+    </div>
+  );
+};
+
+/** 单个分析子卡:左 icon + 标题,内容由 children 渲染 */
+const AnalyzeCard = ({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) => {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #eef0f4',
+        borderRadius: 8,
+        padding: '12px 14px',
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#1f2937' }}>
+        <span style={{ color: '#6366f1' }}>{icon}</span>
+        {title}
+      </div>
+      {children}
     </div>
   );
 };
