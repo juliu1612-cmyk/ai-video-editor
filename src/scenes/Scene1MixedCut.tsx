@@ -20,6 +20,8 @@ import {
   HeartFilled,
   CrownOutlined,
   RocketOutlined,
+  DownloadOutlined,
+  PlayCircleFilled,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import TopSteps from '../components/TopSteps';
@@ -156,10 +158,13 @@ const Scene1MixedCut = () => {
   // 第一页:混剪配置(原视频语言/解说语言/音色/生产视频时长)
   const [config, setConfig] = useState<MixConfig>(defaultConfig);
 
-  // 第二页:创意方案选择
-  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(scriptSets[0].id);
+  // 第二页:创意方案多选(可同时勾选多个方案,每个选中方案各生成一个解说视频)
+  const [selectedIds, setSelectedIds] = useState<string[]>([scriptSets[0].id]);
 
-  // 第三页:多文件并发生成状态(每素材一卡)
+  // 第二页:方案卡级别语言/音色修改记录(生成页与成片列表按各方案设置展示)
+  const [planSettings, setPlanSettings] = useState<Record<string, { lang: string; voice: string }>>({});
+
+  // 第三页:多方案并发生成状态(每个选中方案一卡)
   interface GenFile {
     fileId: string;
     title: string;
@@ -171,9 +176,22 @@ const Scene1MixedCut = () => {
   const [genFiles, setGenFiles] = useState<GenFile[]>([]);
 
   const script = useMemo(
-    () => scriptSets.find(s => s.id === selectedScriptId) ?? scriptSets[0],
-    [selectedScriptId]
+    () => scriptSets.find(s => s.id === selectedIds[0]) ?? scriptSets[0],
+    [selectedIds]
   );
+
+  // 读取/更新某个方案的语言与音色(未单独修改过则回退到全局混剪配置)
+  const getPlanSetting = (id: string) =>
+    planSettings[id] ?? { lang: config.narratorLang, voice: config.voice };
+  const updatePlanSetting = (id: string, patch: Partial<{ lang: string; voice: string }>) =>
+    setPlanSettings(prev => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? { lang: config.narratorLang, voice: config.voice }), ...patch },
+    }));
+
+  // 方案勾选切换(多选)
+  const toggleScript = (id: string) =>
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
 
   // 第一页:点击「开始理解分析」→ 跳到独立分析页(Phase.Analyze),
   // 分析动画在分析页内完成:4 个子卡随进度阈值(25/50/75/100%)从上到下依次填充;
@@ -197,22 +215,33 @@ const Scene1MixedCut = () => {
     }, 140);
   };
 
-  // 第二页:一键全选 = 选中所有方案的高光片段(取最后一个作为 selectedScriptId)
+  // 第二页:一键全选/取消全选(多选)
+  const allSelected = selectedIds.length === scriptSets.length;
   const selectAllScripts = () => {
-    message.success(`已全选 ${scriptSets.length} 个方案的全部高光`);
+    if (allSelected) {
+      setSelectedIds([]);
+      message.info('已取消全选');
+    } else {
+      setSelectedIds(scriptSets.map(s => s.id));
+      message.success(`已全选 ${scriptSets.length} 个方案,将各生成一个解说视频`);
+    }
   };
 
-  // 创意方案 → 生成:每个素材一张并发生成卡(参考图)
+  // 创意方案 → 生成:每个选中的方案一张并发生成卡(每方案各产出一个解说视频)
   const runGenerate = () => {
-    // 初始化:每个 uploadedFile 一张卡
-    const initFiles: GenFile[] = uploadedFiles.map(f => ({
-      fileId: f.id,
-      title: f.name.replace(/\.[^/.]+$/, '') || f.name, // 去后缀
-      progress: 0,
-      stepIndex: 0,
-      done: false,
-      failed: false,
-    }));
+    if (!selectedIds.length) return message.warning('请至少选择一个创意方案');
+    // 初始化:每个选中方案一张卡,标题为方案标题
+    const initFiles: GenFile[] = selectedIds.map(id => {
+      const s = scriptSets.find(x => x.id === id) ?? scriptSets[0];
+      return {
+        fileId: id,
+        title: s.title,
+        progress: 0,
+        stepIndex: 0,
+        done: false,
+        failed: false,
+      };
+    });
     setGenFiles(initFiles);
     setPhase(Phase.Generate);
 
@@ -245,9 +274,14 @@ const Scene1MixedCut = () => {
     });
   };
 
-  // 全部生成完成时显示返回首页按钮
-  const allGenDone = genFiles.length > 0 && genFiles.every(g => g.done);
+  // 全部生成结束(done 或 failed)后切换为成片列表视图(一行 3 个,支持单个/批量下载)
+  const genAllFinished = genFiles.length > 0 && genFiles.every(g => g.done || g.failed);
+  const doneFiles = genFiles.filter(g => g.done);
+  const failedFiles = genFiles.filter(g => g.failed);
   const goToHome = () => setNav('home');
+  const downloadVideo = (g: GenFile) => message.success(`开始下载「${g.title}」解说视频`);
+  const downloadAllVideos = () =>
+    message.success(`开始批量下载 ${doneFiles.length} 个解说视频`);
 
   // TopSteps 步骤状态(始终按 3 个语义步骤渲染)
   const topCurrent =
@@ -287,7 +321,13 @@ const Scene1MixedCut = () => {
           <Button icon={<ArrowLeftOutlined />} onClick={() => setPhase(Phase.Upload)}>
             上一步
           </Button>
-          <Button type="primary" className="gradient-btn" size="large" onClick={runGenerate}>
+          <Button
+            type="primary"
+            className="gradient-btn"
+            size="large"
+            disabled={!selectedIds.length}
+            onClick={runGenerate}
+          >
             生成解说视频 <ArrowRightOutlined />
           </Button>
         </>
@@ -434,7 +474,7 @@ const Scene1MixedCut = () => {
               理解分析完成,请选择创意方案
             </div>
             <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-              共 {scriptSets.length} 个方案;点击卡片选中,解说词内容与方案主题一一对应
+              共 {scriptSets.length} 个方案,支持多选;每个选中的方案将各生成一个解说视频
             </div>
           </div>
 
@@ -448,18 +488,22 @@ const Scene1MixedCut = () => {
           >
             <div style={{ fontWeight: 600 }}>
               创意方案 <span style={{ color: '#6366f1' }}>{scriptSets.length}</span>
+              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 400, marginLeft: 10 }}>
+                已选 {selectedIds.length} 个
+              </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button size="small" onClick={selectAllScripts}>
-                一键全选
+                {allSelected ? '取消全选' : '一键全选'}
               </Button>
               <Button
                 type="primary"
                 className="gradient-btn"
                 size="small"
+                disabled={!selectedIds.length}
                 onClick={runGenerate}
               >
-                生成解说
+                生成解说{selectedIds.length ? `(${selectedIds.length})` : ''}
               </Button>
             </div>
           </div>
@@ -475,8 +519,9 @@ const Scene1MixedCut = () => {
             }}
           >
             {scriptSets.map((s, idx) => {
-              const selected = selectedScriptId === s.id;
+              const selected = selectedIds.includes(s.id);
               const cat = CATEGORIES[idx % CATEGORIES.length];
+              const setting = getPlanSetting(s.id);
               return (
                 <div
                   key={s.id}
@@ -487,9 +532,11 @@ const Scene1MixedCut = () => {
                     title={s.title}
                     script={s}
                     selected={selected}
-                    onSelect={() => setSelectedScriptId(s.id)}
-                    voice={config.voice}
-                    narratorLang={config.narratorLang}
+                    onToggle={() => toggleScript(s.id)}
+                    lang={setting.lang}
+                    onLangChange={v => updatePlanSetting(s.id, { lang: v })}
+                    voice={setting.voice}
+                    onVoiceChange={v => updatePlanSetting(s.id, { voice: v })}
                   />
                 </div>
               );
@@ -525,8 +572,8 @@ const Scene1MixedCut = () => {
         </div>
       )}
 
-      {/* ============ 第四页:生成解说视频(参考图风格:多卡并发生成) ============ */}
-      {phase === Phase.Generate && (
+      {/* ============ 第四页(生成中):多方案并发生成卡 ============ */}
+      {phase === Phase.Generate && !genAllFinished && (
         <div>
           <div
             style={{
@@ -556,7 +603,7 @@ const Scene1MixedCut = () => {
               <GenerateCard
                 key={g.fileId}
                 title={g.title}
-                language={config.narratorLang}
+                language={getPlanSetting(g.fileId).lang}
                 progress={g.progress}
                 stepIndex={g.stepIndex}
                 estimatedSec={Math.round(config.duration * 2.4)}
@@ -565,13 +612,79 @@ const Scene1MixedCut = () => {
               />
             ))}
           </div>
-          {allGenDone && (
-            <div style={{ textAlign: 'center', marginTop: 24 }}>
-              <Button type="primary" className="gradient-btn" onClick={goToHome}>
-                返回首页
-              </Button>
+        </div>
+      )}
+
+      {/* ============ 第四页(完成态):成片视频列表(一行 3 个,单个/批量下载) ============ */}
+      {phase === Phase.Generate && genAllFinished && (
+        <div className="section-card" style={{ padding: 28 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 6,
+            }}
+          >
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#1f2937' }}>
+              <CheckCircleFilled style={{ color: '#10b981', marginRight: 8 }} />
+              视频生成完成
+              <span style={{ fontSize: 12.5, color: '#6b7280', fontWeight: 400, marginLeft: 10 }}>
+                共生成 {doneFiles.length} 个解说视频
+              </span>
+            </div>
+            <Button
+              type="primary"
+              className="gradient-btn"
+              icon={<DownloadOutlined />}
+              disabled={!doneFiles.length}
+              onClick={downloadAllVideos}
+            >
+              批量下载{doneFiles.length ? `(${doneFiles.length})` : ''}
+            </Button>
+          </div>
+          {failedFiles.length > 0 && (
+            <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 4 }}>
+              {failedFiles.length} 个方案生成失败,可返回创意方案重新生成
             </div>
           )}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 16,
+              marginTop: 16,
+            }}
+          >
+            {doneFiles.map((g, i) => {
+              const s = scriptSets.find(x => x.id === g.fileId);
+              return (
+                <VideoResultCard
+                  key={g.fileId}
+                  title={g.title}
+                  lang={getPlanSetting(g.fileId).lang}
+                  voice={getPlanSetting(g.fileId).voice}
+                  durationSec={config.duration}
+                  gradient={s?.cover ?? VIDEO_GRADIENTS[i % VIDEO_GRADIENTS.length]}
+                  onDownload={() => downloadVideo(g)}
+                />
+              );
+            })}
+          </div>
+          <div
+            style={{
+              textAlign: 'center',
+              marginTop: 24,
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 12,
+            }}
+          >
+            <Button onClick={() => setPhase(Phase.Plans)}>返回创意方案</Button>
+            <Button type="primary" className="gradient-btn" onClick={goToHome}>
+              返回首页
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -850,11 +963,11 @@ const fmtTime = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /**
- * 第二步:创意方案卡片(参考图风格)
- * - 顶部:emoji 分类 + 标题(可勾选)
+ * 第二步:创意方案卡片(参考图风格,支持多选)
+ * - 顶部:emoji 分类 + 标题(可勾选,点击卡片/勾选框切换选中)
  * - 视频结构故事线
  * - 高光片段列表(时间 + 类型彩色标签 + 描述)
- * - 解说词(可编辑) + 语言/音色
+ * - 解说词(可编辑) + 语言/音色(可修改,状态由父级托管,生成时按方案读取)
  * - 4 段解说词文本(中文 1..4)
  */
 const PlanCard = ({
@@ -862,21 +975,23 @@ const PlanCard = ({
   title,
   script,
   selected,
-  onSelect,
+  onToggle,
+  lang,
+  onLangChange,
   voice,
-  narratorLang,
+  onVoiceChange,
 }: {
   category: string;
   title: string;
   script: ScriptSet;
   selected: boolean;
-  onSelect: () => void;
+  onToggle: () => void;
+  lang: string;
+  onLangChange: (v: string) => void;
   voice: string;
-  narratorLang: string;
+  onVoiceChange: (v: string) => void;
 }) => {
-  // 卡级别可修改状态:语言/音色/解说文案(与其它卡片互不影响)
-  const [lang, setLang] = useState(narratorLang);
-  const [voiceName, setVoiceName] = useState(voice);
+  // 卡级别可编辑解说文案(与其它卡片互不影响);语言/音色提升到父级,生成时按方案读取
   const [narrations, setNarrations] = useState<string[]>(() => getNarrationsForScript(script));
 
   const updateNarration = (idx: number, text: string) => {
@@ -885,7 +1000,7 @@ const PlanCard = ({
 
   return (
     <div
-      onClick={onSelect}
+      onClick={onToggle}
       style={{
         background: selected ? '#eef2ff' : '#fff',
         border: `1.5px solid ${selected ? '#6366f1' : '#e5e7eb'}`,
@@ -919,7 +1034,7 @@ const PlanCard = ({
         <Checkbox
           checked={selected}
           onClick={e => e.stopPropagation()}
-          onChange={onSelect}
+          onChange={onToggle}
           style={{ marginTop: 2 }}
         />
         <span style={{ flex: 1 }}>{title}</span>
@@ -992,15 +1107,15 @@ const PlanCard = ({
             size="small"
             value={lang}
             options={narratorLangOptions}
-            onChange={setLang}
+            onChange={onLangChange}
             style={{ width: 86 }}
             popupMatchSelectWidth={false}
           />
           <Select
             size="small"
-            value={voiceName}
+            value={voice}
             options={voiceOptions}
-            onChange={setVoiceName}
+            onChange={onVoiceChange}
             suffixIcon={
               <div
                 style={{
@@ -1156,8 +1271,115 @@ const GenerateCard = ({
 
       {/* 底部:成片标题 + 语言 */}
       <div style={{ padding: '12px 16px 16px', marginTop: 4 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{title}?</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{title}</div>
         <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{language}</div>
+      </div>
+    </div>
+  );
+};
+
+// 成片封面渐变兜底色(方案自带 cover 优先,按顺序循环)
+const VIDEO_GRADIENTS = [
+  'linear-gradient(135deg, #6366f1, #a855f7)',
+  'linear-gradient(135deg, #f59e0b, #ef4444)',
+  'linear-gradient(135deg, #10b981, #3b82f6)',
+  'linear-gradient(135deg, #ec4899, #8b5cf6)',
+  'linear-gradient(135deg, #14b8a6, #6366f1)',
+  'linear-gradient(135deg, #f97316, #eab308)',
+];
+
+/**
+ * 生成完成后的成片视频卡片:
+ * - 16:9 渐变封面 + 播放按钮 + 时长角标
+ * - 标题 + 语言/音色/时长元信息
+ * - 单个下载按钮
+ */
+const VideoResultCard = ({
+  title,
+  lang,
+  voice,
+  durationSec,
+  gradient,
+  onDownload,
+}: {
+  title: string;
+  lang: string;
+  voice: string;
+  durationSec: number;
+  gradient: string;
+  onDownload: () => void;
+}) => {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 10,
+        overflow: 'hidden',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      }}
+    >
+      {/* 封面:渐变 + 播放按钮 + 时长角标 */}
+      <div
+        style={{
+          position: 'relative',
+          aspectRatio: '16 / 9',
+          background: gradient,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <PlayCircleFilled
+          style={{
+            fontSize: 42,
+            color: 'rgba(255,255,255,0.92)',
+            textShadow: '0 2px 8px rgba(0,0,0,0.25)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            padding: '1px 7px',
+            background: 'rgba(0,0,0,0.55)',
+            color: '#fff',
+            fontSize: 10.5,
+            fontFamily: 'monospace',
+            borderRadius: 4,
+          }}
+        >
+          {fmtTime(durationSec)}
+        </div>
+      </div>
+      {/* 信息 + 单个下载 */}
+      <div style={{ padding: '12px 14px 14px' }}>
+        <div
+          title={title}
+          style={{
+            fontSize: 13.5,
+            fontWeight: 600,
+            color: '#1f2937',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </div>
+        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
+          解说 {lang} · {voice} · {fmtTime(durationSec)}
+        </div>
+        <Button
+          block
+          size="small"
+          icon={<DownloadOutlined />}
+          onClick={onDownload}
+          style={{ marginTop: 10 }}
+        >
+          下载视频
+        </Button>
       </div>
     </div>
   );
