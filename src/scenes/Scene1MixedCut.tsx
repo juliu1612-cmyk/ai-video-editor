@@ -136,9 +136,10 @@ const voiceOptions = [
 
 const durationOptions = [
   { label: '1 分钟', value: 60 },
+  { label: '2 分钟', value: 120 },
   { label: '3 分钟', value: 180 },
+  { label: '4 分钟', value: 240 },
   { label: '5 分钟', value: 300 },
-  { label: '10 分钟', value: 600 },
 ];
 
 const defaultConfig: MixConfig = {
