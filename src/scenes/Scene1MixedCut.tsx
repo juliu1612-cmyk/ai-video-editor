@@ -103,20 +103,10 @@ const getNarrationsForScript = (s: ScriptSet): string[] => SCRIPT_NARRATIONS[s.i
 
 // ---------- 第一页:混剪配置 ----------
 interface MixConfig {
-  originLang: string;   // 原视频语言
   narratorLang: string; // 解说语言
   voice: string;        // 音色
   duration: number;     // 生产视频时长(秒)
 }
-
-const originLangOptions = [
-  { label: '中文', value: '中文' },
-  { label: '粤语', value: '粤语' },
-  { label: '英文', value: '英文' },
-  { label: '日文', value: '日文' },
-  { label: '韩文', value: '韩文' },
-  { label: '泰语', value: '泰语' },
-];
 
 const narratorLangOptions = [
   { label: '中文', value: '中文' },
@@ -143,7 +133,6 @@ const durationOptions = [
 ];
 
 const defaultConfig: MixConfig = {
-  originLang: '中文',
   narratorLang: '中文',
   voice: '知性女声',
   duration: 180,
@@ -156,7 +145,7 @@ const Scene1MixedCut = () => {
   // 第一页:理解分析进度(由独立分析页使用,0-100)
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
 
-  // 第一页:混剪配置(原视频语言/解说语言/音色/生产视频时长)
+  // 第一页:混剪配置(解说语言/音色/生产视频时长)
   const [config, setConfig] = useState<MixConfig>(defaultConfig);
 
   // 第二页:创意方案多选(可同时勾选多个方案,每个选中方案各生成一个解说视频)
@@ -498,7 +487,7 @@ const Scene1MixedCut = () => {
               上传剧集视频,完成后开始理解分析
             </div>
             <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-              左侧上传视频素材(可多个);右侧设置原视频语言、解说语言、音色与生产视频时长
+              左侧上传视频素材(可多个);右侧设置解说语言、音色与生产视频时长
             </div>
           </div>
 
@@ -549,15 +538,6 @@ const Scene1MixedCut = () => {
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>影响解说生成</span>
                 </div>
                 <Row gutter={[12, 14]}>
-                  <Col span={12}>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>原视频语言</div>
-                    <Select
-                      value={config.originLang}
-                      options={originLangOptions}
-                      onChange={v => setConfig(c => ({ ...c, originLang: v }))}
-                      style={{ width: '100%' }}
-                    />
-                  </Col>
                   <Col span={12}>
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>解说语言</div>
                     <Select
