@@ -284,17 +284,28 @@ const Scene1MixedCut = () => {
   const [exportCtx, setExportCtx] = useState<'single' | 'batch' | null>(null);
   // 字幕擦除开关(默认开)
   const [eraseSubs, setEraseSubs] = useState(true);
-  // 用于预览背景渐变(single 时取对应卡 / batch 时取第一个)
-  const exportPreviewGradient = (() => {
-    if (exportCtx === 'single') return VIDEO_GRADIENTS[0];
-    if (exportCtx === 'batch' && doneFiles.length) {
-      const idx = scriptSets.findIndex(s => s.id === doneFiles[0].fileId);
-      return scriptSets[idx]?.cover ?? VIDEO_GRADIENTS[0];
-    }
-    return VIDEO_GRADIENTS[0];
+  // 导出弹窗左侧预览视频的切换索引:
+  // - single:固定 0(只导出当前卡,无需切换)
+  // - batch:在已完成的成片列表中切换(初始默认 0)
+  const [exportPreviewIdx, setExportPreviewIdx] = useState(0);
+  // 单导出时固定显示当前卡;批量导出时按用户选中的索引展示对应成片
+  const exportPreviewItem = (() => {
+    if (exportCtx === 'single') return doneFiles[0] ?? null;
+    if (exportCtx === 'batch') return doneFiles[exportPreviewIdx] ?? doneFiles[0] ?? null;
+    return null;
   })();
+  // 当前预览对应的渐变背景(用以替代原 exportPreviewGradient)
+  const exportPreviewGradient = (() => {
+    const item = exportPreviewItem;
+    if (!item) return VIDEO_GRADIENTS[0];
+    const idx = scriptSets.findIndex(s => s.id === item.fileId);
+    return scriptSets[idx]?.cover ?? VIDEO_GRADIENTS[0];
+  })();
+  const openExport = (kind: 'single' | 'batch') => {
+    setExportPreviewIdx(0);
+    setExportCtx(kind);
+  };
   const exportCount = exportCtx === 'single' ? 1 : doneFiles.length;
-  const openExport = (kind: 'single' | 'batch') => setExportCtx(kind);
   const closeExport = () => setExportCtx(null);
   const confirmExport = () => {
     message.success(
@@ -738,7 +749,7 @@ const Scene1MixedCut = () => {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
               }}
             >
-              {/* 时长角标 */}
+              {/* 时长角标(根据当前预览 item 显示) */}
               <div
                 style={{
                   position: 'absolute',
@@ -809,6 +820,66 @@ const Scene1MixedCut = () => {
             </div>
           </div>
 
+          {/* 批量导出时:左侧缩略图列(默认主预览正下方),点击切换当前预览视频 */}
+          {exportCtx === 'batch' && doneFiles.length > 1 && (
+            <div
+              data-testid="export-preview-list"
+              style={{
+                flex: '0 0 88px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                maxHeight: 360,
+                overflowY: 'auto',
+              }}
+            >
+              {doneFiles.map((f, i) => {
+                const idx = scriptSets.findIndex(s => s.id === f.fileId);
+                const cover = scriptSets[idx]?.cover ?? VIDEO_GRADIENTS[i % VIDEO_GRADIENTS.length];
+                const active = i === exportPreviewIdx;
+                return (
+                  <div
+                    key={f.fileId}
+                    role="button"
+                    aria-label={`预览成片 ${i + 1}`}
+                    onClick={() => setExportPreviewIdx(i)}
+                    style={{
+                      position: 'relative',
+                      width: 88,
+                      aspectRatio: '9 / 16',
+                      borderRadius: 6,
+                      background: cover,
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      border: active ? '2px solid #ef4444' : '2px solid transparent',
+                      boxShadow: active
+                        ? '0 0 0 2px rgba(239,68,68,0.25)'
+                        : '0 1px 4px rgba(0,0,0,0.08)',
+                      transition: 'border-color 0.18s, box-shadow 0.18s',
+                    }}
+                  >
+                    {/* 时长角标 */}
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: 4,
+                        bottom: 4,
+                        padding: '1px 5px',
+                        background: 'rgba(0,0,0,0.6)',
+                        color: '#fff',
+                        fontSize: 9,
+                        fontFamily: 'monospace',
+                        borderRadius: 3,
+                      }}
+                    >
+                      00:26
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* 右侧:设置区 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* 视频(MP4)导出 */}
@@ -840,32 +911,6 @@ const Scene1MixedCut = () => {
               }}
             >
               默认已框选常见底部字幕区,可在画面上按住拖动重新框选覆盖原片字幕位置。
-            </div>
-
-            {/* 剪映工程导出 */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginTop: 18,
-              }}
-            >
-              <Checkbox checked disabled />
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
-                剪映工程导出
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 11.5,
-                color: '#9ca3af',
-                paddingLeft: 24,
-                marginTop: 6,
-                lineHeight: 1.55,
-              }}
-            >
-              自动生成可二次编辑的剪映工程文件,时间轴与解说字幕完整保留。
             </div>
           </div>
         </div>
