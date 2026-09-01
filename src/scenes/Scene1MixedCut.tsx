@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox, Input } from 'antd';
+import { Button, Tag, Row, Col, message, Divider, Select, Skeleton, Checkbox, Input, Modal, Switch } from 'antd';
 import {
   ThunderboltOutlined,
   ArrowRightOutlined,
@@ -280,9 +280,28 @@ const Scene1MixedCut = () => {
   const doneFiles = genFiles.filter(g => g.done);
   const failedFiles = genFiles.filter(g => g.failed);
   const goToHome = () => setNav('home');
-  const downloadVideo = (g: GenFile) => message.success(`开始下载「${g.title}」解说视频`);
-  const downloadAllVideos = () =>
-    message.success(`开始批量下载 ${doneFiles.length} 个解说视频`);
+  // 导出弹窗状态:'single' = 单个 / 'batch' = 批量 / null = 不展示
+  const [exportCtx, setExportCtx] = useState<'single' | 'batch' | null>(null);
+  // 字幕擦除开关(默认开)
+  const [eraseSubs, setEraseSubs] = useState(true);
+  // 用于预览背景渐变(single 时取对应卡 / batch 时取第一个)
+  const exportPreviewGradient = (() => {
+    if (exportCtx === 'single') return VIDEO_GRADIENTS[0];
+    if (exportCtx === 'batch' && doneFiles.length) {
+      const idx = scriptSets.findIndex(s => s.id === doneFiles[0].fileId);
+      return scriptSets[idx]?.cover ?? VIDEO_GRADIENTS[0];
+    }
+    return VIDEO_GRADIENTS[0];
+  })();
+  const exportCount = exportCtx === 'single' ? 1 : doneFiles.length;
+  const openExport = (kind: 'single' | 'batch') => setExportCtx(kind);
+  const closeExport = () => setExportCtx(null);
+  const confirmExport = () => {
+    message.success(
+      `开始导出 ${exportCount} 个成片(字幕擦除:${eraseSubs ? '开' : '关'})`
+    );
+    setExportCtx(null);
+  };
 
   // TopSteps 步骤状态(始终按 3 个语义步骤渲染)
   const topCurrent =
@@ -638,7 +657,7 @@ const Scene1MixedCut = () => {
               className="gradient-btn"
               icon={<DownloadOutlined />}
               disabled={!doneFiles.length}
-              onClick={downloadAllVideos}
+              onClick={() => openExport('batch')}
             >
               批量下载{doneFiles.length ? `(${doneFiles.length})` : ''}
             </Button>
@@ -666,7 +685,7 @@ const Scene1MixedCut = () => {
                   voice={getPlanSetting(g.fileId).voice}
                   durationSec={config.duration}
                   gradient={s?.cover ?? VIDEO_GRADIENTS[i % VIDEO_GRADIENTS.length]}
-                  onDownload={() => downloadVideo(g)}
+                  onDownload={() => openExport('single')}
                 />
               );
             })}
@@ -687,6 +706,192 @@ const Scene1MixedCut = () => {
           </div>
         </div>
       )}
+
+      {/* ============ 导出成片弹窗(字幕擦除设置) ============ */}
+      <Modal
+        open={exportCtx !== null}
+        onCancel={closeExport}
+        footer={null}
+        width={720}
+        centered
+        closable
+        title={
+          <span>
+            导出成片
+            <span style={{ fontSize: 12.5, color: '#9ca3af', marginLeft: 8, fontWeight: 400 }}>
+              (已选 {exportCount} 个)
+            </span>
+          </span>
+        }
+      >
+        <div style={{ display: 'flex', gap: 24, paddingTop: 8 }}>
+          {/* 左侧:视频预览(渐变 + 字幕擦除框叠加) */}
+          <div style={{ flex: '0 0 260px' }}>
+            <div
+              style={{
+                position: 'relative',
+                aspectRatio: '9 / 16',
+                maxHeight: 360,
+                borderRadius: 8,
+                background: exportPreviewGradient,
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              }}
+            >
+              {/* 时长角标 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  bottom: 8,
+                  padding: '2px 7px',
+                  background: 'rgba(0,0,0,0.6)',
+                  color: '#fff',
+                  fontSize: 10.5,
+                  fontFamily: 'monospace',
+                  borderRadius: 4,
+                }}
+              >
+                00:29
+              </div>
+              {/* 字幕擦除框(开关关闭时不渲染) */}
+              {eraseSubs && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '12%',
+                    right: '12%',
+                    bottom: '18%',
+                    height: '18%',
+                    border: '1.5px dashed #2563eb',
+                    borderRadius: 2,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {/* 4 角控制点 */}
+                  {[
+                    { top: -3, left: -3 },
+                    { top: -3, right: -3 },
+                    { bottom: -3, left: -3 },
+                    { bottom: -3, right: -3 },
+                  ].map((p, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        position: 'absolute',
+                        width: 6,
+                        height: 6,
+                        background: '#fff',
+                        border: '1.5px solid #2563eb',
+                        ...p,
+                      }}
+                    />
+                  ))}
+                  {/* 框上沿文字标签 */}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -22,
+                      left: 0,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#2563eb',
+                      background: '#fff',
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    字幕擦除框
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右侧:设置区 */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* 视频(MP4)导出 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Checkbox checked disabled />
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
+                视频(MP4)导出
+              </span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                paddingLeft: 24,
+                marginTop: 10,
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#374151' }}>擦除原视频字幕</span>
+              <Switch checked={eraseSubs} onChange={setEraseSubs} size="small" />
+            </div>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: '#9ca3af',
+                paddingLeft: 24,
+                marginTop: 6,
+                lineHeight: 1.55,
+              }}
+            >
+              默认已框选常见底部字幕区,可在画面上按住拖动重新框选覆盖原片字幕位置。
+            </div>
+
+            {/* 剪映工程导出 */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 18,
+              }}
+            >
+              <Checkbox checked disabled />
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
+                剪映工程导出
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: '#9ca3af',
+                paddingLeft: 24,
+                marginTop: 6,
+                lineHeight: 1.55,
+              }}
+            >
+              自动生成可二次编辑的剪映工程文件,时间轴与解说字幕完整保留。
+            </div>
+          </div>
+        </div>
+
+        {/* 底部按钮 */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 10,
+            marginTop: 22,
+            paddingTop: 14,
+            borderTop: '1px solid #f3f4f6',
+          }}
+        >
+          <Button onClick={closeExport}>取消</Button>
+          <Button
+            type="primary"
+            className="gradient-btn"
+            icon={<DownloadOutlined />}
+            onClick={confirmExport}
+          >
+            导出成片
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 };
