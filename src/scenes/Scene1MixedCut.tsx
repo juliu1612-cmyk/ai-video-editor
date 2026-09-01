@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Button, Tag, Row, Col, message, Card, Divider } from 'antd';
+import { Button, Tag, Row, Col, message, Card, Divider, Select } from 'antd';
 import {
   ThunderboltOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
   CheckCircleFilled,
+  VideoCameraOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import VideoUploader from '../components/VideoUploader';
 import HighlightTimeline from '../components/HighlightTimeline';
@@ -16,13 +18,60 @@ import FinalPreviewPanel from '../components/FinalPreviewPanel';
 import { scriptSets } from '../mock/highlights';
 import { useApp } from '../context/AppContext';
 
-// 三页:第一页 上传+理解分析 / 第二页 创意方案 / 第三页 生成解说视频
+// 三页:第一页 上传+混剪配置+理解分析 / 第二页 创意方案 / 第三页 生成解说视频
 const Phase = {
   Upload: 1,
   Plans: 2,
   Generate: 3,
 } as const;
 type PhaseValue = (typeof Phase)[keyof typeof Phase];
+
+// ---------- 第一页:混剪配置 ----------
+interface MixConfig {
+  originLang: string;   // 原视频语言
+  narratorLang: string; // 解说语言
+  voice: string;        // 音色
+  duration: number;     // 生产视频时长(秒)
+}
+
+const originLangOptions = [
+  { label: '中文', value: '中文' },
+  { label: '粤语', value: '粤语' },
+  { label: '英文', value: '英文' },
+  { label: '日文', value: '日文' },
+  { label: '韩文', value: '韩文' },
+  { label: '泰语', value: '泰语' },
+];
+
+const narratorLangOptions = [
+  { label: '中文', value: '中文' },
+  { label: '英文', value: '英文' },
+  { label: '日文', value: '日文' },
+  { label: '韩文', value: '韩文' },
+  { label: '西班牙文', value: '西班牙文' },
+];
+
+const voiceOptions = [
+  { label: '知性女声', value: '知性女声' },
+  { label: '磁性男声', value: '磁性男声' },
+  { label: '活泼甜音', value: '活泼甜音' },
+  { label: '沉稳大叔音', value: '沉稳大叔音' },
+  { label: '旁白主播音', value: '旁白主播音' },
+];
+
+const durationOptions = [
+  { label: '1 分钟', value: 60 },
+  { label: '3 分钟', value: 180 },
+  { label: '5 分钟', value: 300 },
+  { label: '10 分钟', value: 600 },
+];
+
+const defaultConfig: MixConfig = {
+  originLang: '中文',
+  narratorLang: '中文',
+  voice: '知性女声',
+  duration: 180,
+};
 
 const Scene1MixedCut = () => {
   const { uploadedFiles } = useApp();
@@ -32,6 +81,9 @@ const Scene1MixedCut = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [analyzed, setAnalyzed] = useState(false);
+
+  // 第一页:混剪配置(原视频语言/解说语言/音色/生产视频时长)
+  const [config, setConfig] = useState<MixConfig>(defaultConfig);
 
   // 第二页:创意方案选择
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(scriptSets[0].id);
@@ -164,7 +216,7 @@ const Scene1MixedCut = () => {
         steps={['理解分析', '创意方案', '生成解说视频']}
       />
 
-      {/* ============ 第一页:上传素材 + 理解分析 ============ */}
+      {/* ============ 第一页:上传素材 + 混剪配置 + 理解分析 ============ */}
       {phase === 1 && (
         <div className="section-card" style={{ padding: 28 }}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -173,15 +225,96 @@ const Scene1MixedCut = () => {
               上传剧集视频,完成后开始理解分析
             </div>
             <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>
-              支持批量上传多个视频,mp4/mov,单个≤2G;AI 将自动提取剧情高光片段
+              左侧上传视频素材(可多个);右侧设置原视频语言、解说语言、音色与生产视频时长
             </div>
           </div>
 
-          <VideoUploader
-            multiple
-            title="上传视频素材(可多选)"
-            desc="支持批量上传多个视频,mp4/mov,单个≤2G"
-          />
+          <Row gutter={16}>
+            {/* 左:上传视频素材 */}
+            <Col xs={24} md={12}>
+              <div
+                style={{
+                  border: `2px solid ${uploadedFiles.length ? '#10b981' : '#e5e7eb'}`,
+                  borderRadius: 14,
+                  padding: 16,
+                  height: '100%',
+                  position: 'relative',
+                }}
+              >
+                {uploadedFiles.length > 0 && (
+                  <CheckCircleFilled
+                    style={{ position: 'absolute', top: 10, right: 10, color: '#10b981', fontSize: 16 }}
+                  />
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <VideoCameraOutlined style={{ color: '#6366f1', fontSize: 18 }} />
+                  <strong>① 视频素材</strong>
+                  <span style={{ fontSize: 11, color: '#ef4444' }}>必填</span>
+                </div>
+                <VideoUploader
+                  multiple
+                  title="上传视频素材(可多选)"
+                  desc="支持批量上传多个视频,mp4/mov,单个≤2G"
+                />
+              </div>
+            </Col>
+
+            {/* 右:混剪配置 */}
+            <Col xs={24} md={12}>
+              <div
+                style={{
+                  border: '2px solid #e5e7eb',
+                  borderRadius: 14,
+                  padding: 16,
+                  height: '100%',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <SettingOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
+                  <strong>② 混剪配置</strong>
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>影响解说生成</span>
+                </div>
+                <Row gutter={[12, 14]}>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>原视频语言</div>
+                    <Select
+                      value={config.originLang}
+                      options={originLangOptions}
+                      onChange={v => setConfig(c => ({ ...c, originLang: v }))}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>解说语言</div>
+                    <Select
+                      value={config.narratorLang}
+                      options={narratorLangOptions}
+                      onChange={v => setConfig(c => ({ ...c, narratorLang: v }))}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>解说音色</div>
+                    <Select
+                      value={config.voice}
+                      options={voiceOptions}
+                      onChange={v => setConfig(c => ({ ...c, voice: v }))}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>生产视频时长</div>
+                    <Select
+                      value={config.duration}
+                      options={durationOptions}
+                      onChange={v => setConfig(c => ({ ...c, duration: v }))}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                </Row>
+              </div>
+            </Col>
+          </Row>
 
           {analyzing && (
             <div style={{ padding: 40 }}>
@@ -302,7 +435,7 @@ const Scene1MixedCut = () => {
               <ProgressPanel
                 steps={progressSteps}
                 progress={genProgress}
-                estimatedSeconds={960}
+                estimatedSeconds={Math.round(config.duration * 2.4)}
               />
             </div>
           )}
