@@ -214,7 +214,6 @@ const Scene4ReplaceLogo = () => {
                   multiple
                   title="上传视频(可多选)"
                   desc="支持批量上传多个视频,mp4/mov,单个≤2G"
-                  showCloudBtn={false}
                 />
               </div>
             </Col>

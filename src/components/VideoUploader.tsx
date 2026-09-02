@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Modal, Button, message } from 'antd';
-import { CloudUploadOutlined, CloudOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { Button, message } from 'antd';
+import { CloudUploadOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { useApp, type UploadedFile } from '../context/AppContext';
 import { uid } from '../utils/format';
 
@@ -10,7 +10,6 @@ interface VideoUploaderProps {
   maxSize?: number;          // MB
   title?: string;
   desc?: string;
-  showCloudBtn?: boolean;    // 是否显示"从百度网盘上传"按钮
   onChange?: (files: UploadedFile[]) => void;
 }
 
@@ -20,12 +19,10 @@ const VideoUploader = ({
   maxSize = 2000,
   title = '点击/拖拽上传',
   desc = '文件总时长不得超过30分钟,单个最大2G',
-  showCloudBtn = true,
   onChange,
 }: VideoUploaderProps) => {
   const { uploadedFiles, addUploadedFile, removeUploadedFile } = useApp();
   const [dragOver, setDragOver] = useState(false);
-  const [cloudModalOpen, setCloudModalOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 批量上传:一次可选多个文件,逐个校验后统一入库
@@ -65,13 +62,6 @@ const VideoUploader = ({
     handleFiles(e.dataTransfer.files);
   };
 
-  // 模拟百度网盘 - mock 几个素材
-  const mockCloudFiles = [
-    { name: '豪门复仇01.mp4', size: '128MB', cover: 'linear-gradient(135deg,#f97316,#ec4899)' },
-    { name: '总裁归来02.mp4', size: '256MB', cover: 'linear-gradient(135deg,#3b82f6,#8b5cf6)' },
-    { name: '逆袭人生03.mp4', size: '198MB', cover: 'linear-gradient(135deg,#10b981,#0ea5e9)' },
-  ];
-
   return (
     <div>
       <div
@@ -107,16 +97,6 @@ const VideoUploader = ({
         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
           仅支持: mp4 / mov
         </div>
-        {showCloudBtn && (
-          <Button
-            type="default"
-            icon={<CloudOutlined />}
-            style={{ marginTop: 16 }}
-            onClick={e => { e.stopPropagation(); setCloudModalOpen(true); }}
-          >
-            从百度网盘上传
-          </Button>
-        )}
       </div>
 
       {uploadedFiles.length > 0 && (
@@ -164,51 +144,6 @@ const VideoUploader = ({
           ))}
         </div>
       )}
-
-      <Modal
-        title="从百度网盘选择"
-        open={cloudModalOpen}
-        onCancel={() => setCloudModalOpen(false)}
-        footer={null}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {mockCloudFiles.map(f => (
-            <div
-              key={f.name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: 12, border: '1px solid #e5e7eb', borderRadius: 8,
-                cursor: 'pointer',
-              }}
-              onClick={() => {
-                const newFile: UploadedFile = {
-                  id: uid(),
-                  name: f.name,
-                  size: parseFloat(f.size),
-                  duration: 120,
-                  url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-                  cover: f.cover,
-                };
-                addUploadedFile(newFile);
-                setCloudModalOpen(false);
-                message.success(`已选择 ${f.name}`);
-              }}
-            >
-              <div
-                style={{
-                  width: 80, height: 48, borderRadius: 6,
-                  background: f.cover,
-                }}
-              />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500 }}>{f.name}</div>
-                <div style={{ fontSize: 12, color: '#9ca3af' }}>{f.size}</div>
-              </div>
-              <Button type="primary" size="small">选择</Button>
-            </div>
-          ))}
-        </div>
-      </Modal>
     </div>
   );
 };
