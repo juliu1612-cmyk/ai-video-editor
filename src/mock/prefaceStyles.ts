@@ -1,5 +1,5 @@
 /**
- * AI 前贴风格
+ * AI 前贴风格化
  */
 export interface PrefaceStyle {
   id: string;
@@ -12,38 +12,38 @@ export interface PrefaceStyle {
 
 export const prefaceStyles: PrefaceStyle[] = [
   {
-    id: 'p1', name: '悬念开场',
-    desc: '抛出冲突,引发观众好奇',
-    example: 'linear-gradient(135deg, #1f2937 0%, #4b5563 100%)',
+    id: 'p1', name: '兽人系列',
+    desc: '狂野粗犷,远古蛮荒',
+    example: 'linear-gradient(135deg, #92400e 0%, #ea580c 100%)',
     duration: 3,
-    script: '当你看到妻子家中的监控画面时,你会发现,这一切远比想象的更可怕……',
+    script: '沉睡万年的图腾苏醒,兽血再次沸腾,利爪撕裂苍穹,宣告远古霸主的归来。',
   },
   {
-    id: 'p2', name: '冲突反转',
-    desc: '上一秒平静,下一秒爆发',
-    example: 'linear-gradient(135deg, #ef4444 0%, #f97316 100%)',
-    duration: 5,
-    script: '三年前,他含冤入狱;三年后,他强势归来。而她,跪在门外,哭得撕心裂肺。',
-  },
-  {
-    id: 'p3', name: '治愈瞬间',
-    desc: '暖心片段,情绪反差',
-    example: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+    id: 'p2', name: '克苏鲁系列',
+    desc: '深海低语,未知恐惧',
+    example: 'linear-gradient(135deg, #134e4a 0%, #0f766e 100%)',
     duration: 3,
-    script: '在最深的绝望里,她看到了他温柔的笑。这一笑,胜过千言万语。',
+    script: '理智的边缘传来不可名状的耳语,旧日支配者从深渊苏醒,凝视它的人都将陷入疯狂。',
   },
   {
-    id: 'p4', name: '搞笑反差',
-    desc: '出其不意,引人发笑',
-    example: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-    duration: 1,
-    script: '谁说反派一定要聪明?这个反派智商下线,笑点拉满!',
+    id: 'p3', name: '变种人系列',
+    desc: '基因觉醒,异能绽放',
+    example: 'linear-gradient(135deg, #6d28d9 0%, #c026d3 100%)',
+    duration: 3,
+    script: 'X 基因觉醒的瞬间,他不再是普通人。异能觉醒,世界将因他而重写。',
   },
   {
-    id: 'p5', name: '高能预警',
-    desc: '节奏感拉满,预告精彩',
-    example: 'linear-gradient(135deg, #7c3aed 0%, #c026d3 100%)',
-    duration: 5,
-    script: '前方高能!这是一个关于复仇、关于救赎、关于真爱的故事。请系好安全带,我们发车了。',
+    id: 'p4', name: '日韩漫2D风格',
+    desc: '清新画风,二次元呈现',
+    example: 'linear-gradient(135deg, #f9a8d4 0%, #a5f3fc 100%)',
+    duration: 3,
+    script: '樱花飘落的校园里,他与她四目相对。命运的齿轮,从这一刻开始转动。',
+  },
+  {
+    id: 'p5', name: '欧美3D漫风格',
+    desc: '立体渲染,好莱坞质感',
+    example: 'linear-gradient(135deg, #1e40af 0%, #06b6d4 100%)',
+    duration: 3,
+    script: '当最后一缕阳光熄灭,英雄从废墟中站起。史诗级 3D 巨制,敬请期待。',
   },
 ];
